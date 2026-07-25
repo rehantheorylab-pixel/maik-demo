@@ -1,8 +1,11 @@
 import time
 import json
 import hashlib
+import random
 from dataclasses import dataclass, field
 from typing import Optional
+
+from config import WORKFLOW_CHAINS, WorkflowStep
 
 @dataclass
 class MetaPrompt:
@@ -11,6 +14,124 @@ class MetaPrompt:
     version: int = 1
     effectiveness: float = 0.5
     created_at: float = field(default_factory=time.time)
+
+PROMPT_TEMPLATES = {
+    "coding": "You are an expert programmer. Write production-quality code for: {task}",
+    "thinking": "You are a logical reasoning agent. Think step by step about: {task}",
+    "error_finding": "You are a strict code reviewer. Find ALL errors, bugs, and issues in this:\n{previous_output}",
+    "confirming": "You are a quality assurance agent. Confirm if the work passes all checks:\n{previous_output}",
+    "idea_generating": "You are a creative innovator. Generate novel ideas and improvements for:\n{previous_output}",
+    "error_fixing": "You are a fixer agent. Fix ALL errors found:\n{previous_output}",
+    "research": "You are a deep researcher. Thoroughly investigate: {task}",
+    "planning": "You are a strategic planner. Create a detailed plan for: {task}",
+    "synthesizing": "You are a synthesis agent. Merge all findings into a cohesive result:\n{previous_output}",
+    "verifying": "You are a verification agent. Fact-check and verify all claims:\n{previous_output}",
+    "polishing": "You are a perfectionist. Polish and refine to final quality:\n{previous_output}",
+}
+
+class PromptSelector:
+    def __init__(self):
+        self._custom_prompts: dict[str, str] = {}
+
+    def select_prompt(self, role: str, task: str = "", previous_output: str = "") -> str:
+        template = self._custom_prompts.get(role) or PROMPT_TEMPLATES.get(role, "You are a helpful AI. Handle: {task}")
+        return template.format(task=task, previous_output=previous_output[:2000])
+
+    def set_custom_prompt(self, role: str, prompt: str):
+        self._custom_prompts[role] = prompt
+
+    def list_roles(self) -> list[str]:
+        return list(PROMPT_TEMPLATES.keys())
+
+    def list_custom(self) -> dict:
+        return dict(self._custom_prompts)
+
+    def reset_role(self, role: str):
+        self._custom_prompts.pop(role, None)
+
+class WorkflowEngine:
+    def __init__(self):
+        self._active_runs: dict[str, dict] = {}
+
+    def run_chain(self, chain_id: str, task: str, chain_config: dict = None) -> str:
+        run_id = hashlib.md5(f"{chain_id}:{time.time()}".encode()).hexdigest()[:12]
+        if chain_config is None:
+            chain_config = WORKFLOW_CHAINS.get(chain_id, {})
+        self._active_runs[run_id] = {
+            "chain_id": chain_id,
+            "chain_name": chain_config.get("name", chain_id),
+            "task": task,
+            "steps": [],
+            "current_step": 0,
+            "status": "running",
+            "started_at": time.time(),
+        }
+        return run_id
+
+    def advance_step(self, run_id: str, step_output: str = "") -> Optional[dict]:
+        run = self._active_runs.get(run_id)
+        if not run or run["status"] != "running":
+            return None
+        chain = WORKFLOW_CHAINS.get(run["chain_id"])
+        if not chain:
+            run["status"] = "error"
+            return None
+        steps = chain["steps"]
+        idx = run["current_step"]
+        if idx >= len(steps):
+            run["status"] = "completed"
+            run["completed_at"] = time.time()
+            return None
+        step = steps[idx]
+        entry = {
+            "step_id": step.id,
+            "role": step.role,
+            "prompt": step.system_prompt,
+            "output": step_output,
+            "status": "pending" if not step_output else "completed",
+        }
+        run["steps"].append(entry)
+        if step_output:
+            run["current_step"] = idx + 1
+            if run["current_step"] >= len(steps):
+                run["status"] = "completed"
+                run["completed_at"] = time.time()
+                return None
+            next_step = steps[run["current_step"]]
+            return {"next_role": next_step.role, "next_prompt": next_step.system_prompt, "previous_output": step_output}
+        return {"next_role": step.role, "next_prompt": step.system_prompt, "previous_output": ""}
+
+    def run_all_simulated(self, chain_id: str, task: str) -> dict:
+        run_id = self.run_chain(chain_id, task)
+        chain = WORKFLOW_CHAINS.get(chain_id, {"steps": [], "name": chain_id})
+        outputs = []
+        previous = task
+        for i, step in enumerate(chain.get("steps", [])):
+            prompt = step.system_prompt.replace("{task}", task)[:100]
+            simulated = f"[{step.role.upper()}] Analyzed: {previous[:60]}..."
+            outputs.append(f"Step {i+1} ({step.role}): {simulated}")
+            previous = simulated
+            self.advance_step(run_id, simulated)
+        run = self._active_runs.get(run_id, {})
+        return {
+            "run_id": run_id,
+            "chain": chain.get("name", chain_id),
+            "steps": run.get("steps", []),
+            "outputs": outputs,
+            "status": "completed",
+            "duration_s": round(time.time() - run.get("started_at", time.time()), 2),
+        }
+
+    def run_status(self, run_id: str) -> Optional[dict]:
+        return self._active_runs.get(run_id)
+
+    def list_runs(self) -> list[dict]:
+        return [{"id": rid, "chain": r["chain_name"], "task": r["task"][:50],
+                 "step": r["current_step"], "status": r["status"]}
+                for rid, r in self._active_runs.items()]
+
+prompt_selector = PromptSelector()
+workflow_engine = WorkflowEngine()
 
 class MetaAgent:
     def __init__(self, agent_id: str = "meta-controller"):

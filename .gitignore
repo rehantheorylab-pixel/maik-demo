@@ -1,10 +1,5 @@
-.venv/
+build/
+exe/
 __pycache__/
 *.pyc
-.env
-*.egg-info/
-dist/
-build/
 *.spec
-.DS_Store
-KILL_MAIK

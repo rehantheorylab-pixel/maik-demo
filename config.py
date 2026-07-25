@@ -114,6 +114,24 @@ CEO_LIGHT = [
 ]
 
 @dataclass
+class APIConfig:
+    id: str
+    provider: str
+    model: str
+    key_prefix: str = ""
+    enabled: bool = True
+
+    def display(self) -> str:
+        return f"{self.provider}/{self.model}"
+
+DEFAULT_APIS = [
+    APIConfig("api-1", "gemini", "gemini-2.0-flash-001", "AIza"),
+    APIConfig("api-2", "openrouter", "qwen/qwen-2.5-coder-3b-instruct", "sk-or"),
+    APIConfig("api-3", "openrouter", "anthropic/claude-3-haiku", "sk-or"),
+    APIConfig("api-4", "openrouter", "openai/gpt-4o-mini", "sk-or"),
+]
+
+@dataclass
 class ExecutiveCouncil:
     profile: str = "full"
     _ceos: list = field(default_factory=list)
@@ -121,24 +139,78 @@ class ExecutiveCouncil:
     _ceo_budgets: dict = field(default_factory=dict)
     _global_budget: Optional[TokenBudget] = None
     _lock: bool = False
+    _custom_ceo_count: int = 0
+    _in_custom_mode: bool = False
 
     def __post_init__(self):
         self.configure(self.profile)
 
     def configure(self, profile: str, global_total: int = 1_000_000):
         self.profile = profile
+        self._in_custom_mode = False
+        self._custom_ceo_count = 0
         self._global_budget = TokenBudget(total=global_total)
         if profile == "full":
             source = CEO_FULL
-        else:
+        elif profile == "light":
             source = CEO_LIGHT
+        else:
+            try:
+                n = int(profile)
+                source = CEO_FULL[:n]
+                self._in_custom_mode = True
+                self._custom_ceo_count = n
+            except:
+                source = CEO_FULL
         self._ceos = [copy.deepcopy(c) for c in source]
+        self._rebuild_maps()
+
+    def configure_custom(self, num_ceos: int, global_total: int = 1_000_000):
+        self._in_custom_mode = True
+        self._custom_ceo_count = num_ceos
+        self.profile = f"custom-{num_ceos}"
+        self._global_budget = TokenBudget(total=global_total)
+        self._ceos = [copy.deepcopy(c) for c in CEO_FULL[:min(num_ceos, len(CEO_FULL))]]
+        extra = num_ceos - len(CEO_FULL)
+        for i in range(extra):
+            pid = f"ceo-custom-{i+1}"
+            c = CEOProfile(pid, f"Custom CEO {i+1}",
+                           ["general","custom","ai","automation"],
+                           ["/v1/route","/v1/execute"], 2, 3, 0.05, "flash")
+            self._ceos.append(c)
+        self._rebuild_maps()
+
+    def _rebuild_maps(self):
         self._api_map = {}
         for ceo in self._ceos:
-            budget = TokenBudget(total=int(global_total * ceo.budget_percent))
+            budget = TokenBudget(total=int(self._global_budget.total * ceo.budget_percent) if self._global_budget else 100000)
             self._ceo_budgets[ceo.id] = budget
             for prefix in ceo.api_prefixes:
                 self._api_map[prefix] = ceo.id
+
+    def add_ceo(self, name: str = "", domains: list = None) -> CEOProfile:
+        idx = len(self._ceos) + 1
+        cid = f"ceo-{name.lower().replace(' ','-')}" if name else f"ceo-custom-{idx}"
+        new_ceo = CEOProfile(cid, name or f"CEO {idx}", domains or ["general","custom"],
+                            ["/v1/route","/v1/execute"], 2, 3, 0.05, "flash")
+        self._ceos.append(new_ceo)
+        budget = TokenBudget(total=int(self._global_budget.total * new_ceo.budget_percent) if self._global_budget else 100000)
+        self._ceo_budgets[new_ceo.id] = budget
+        self._custom_ceo_count = len(self._ceos)
+        self._in_custom_mode = True
+        self.profile = f"custom-{len(self._ceos)}"
+        return new_ceo
+
+    def remove_ceo(self, ceo_id: str) -> bool:
+        for i, c in enumerate(self._ceos):
+            if c.id == ceo_id:
+                self._ceos.pop(i)
+                self._ceo_budgets.pop(ceo_id, None)
+                self._custom_ceo_count = len(self._ceos)
+                self.profile = f"custom-{len(self._ceos)}"
+                self._rebuild_maps()
+                return True
+        return False
 
     @property
     def num_ceos(self) -> int:
@@ -180,6 +252,47 @@ class ExecutiveCouncil:
                  "api_count": len(c.api_prefixes), "managers": c.min_managers,
                  "budget": str(self._ceo_budgets.get(c.id, TokenBudget()))}
                 for c in self._ceos]
+
+@dataclass
+class WorkflowStep:
+    id: str
+    role: str
+    system_prompt: str
+    model_pref: str = "medium"
+
+WORKFLOW_CHAINS = {
+    "code-verify": {
+        "name": "Code & Verify",
+        "steps": [
+            WorkflowStep("ws-code", "coder", "You are an expert programmer. Write complete, working code for the given task."),
+            WorkflowStep("ws-think", "thinker", "You are a logical analyst. Analyze the code above for edge cases, bugs, and correctness."),
+            WorkflowStep("ws-errors", "error_finder", "You are a strict code reviewer. Find ALL errors, bugs, and issues in the code."),
+            WorkflowStep("ws-confirm", "confirmer", "You are a quality assurer. Confirm whether the code passes all checks or needs fixes."),
+            WorkflowStep("ws-idea", "idea_gen", "You are a creative problem solver. Suggest improvements and alternative approaches."),
+            WorkflowStep("ws-code2", "coder", "You are an expert programmer. Rewrite the code incorporating all fixes and improvements found above."),
+            WorkflowStep("ws-errors2", "error_fixer", "You are a strict code reviewer. Verify ALL errors were fixed and fix any remaining ones."),
+        ]
+    },
+    "research-validate": {
+        "name": "Research & Validate",
+        "steps": [
+            WorkflowStep("ws-plan", "planner", "You are a research planner. Create a detailed research plan for the topic."),
+            WorkflowStep("ws-explore", "explorer", "You are a deep researcher. Explore the topic thoroughly with multiple perspectives."),
+            WorkflowStep("ws-analyze", "analyst", "You are a data analyst. Analyze the findings for patterns, insights, and conclusions."),
+            WorkflowStep("ws-verify", "verifier", "You are a fact-checker. Verify all claims and flag any unsupported statements."),
+            WorkflowStep("ws-synth", "synthesizer", "You are a research synthesizer. Synthesize everything into a final report."),
+        ]
+    },
+    "creative-iterate": {
+        "name": "Creative & Iterate",
+        "steps": [
+            WorkflowStep("ws-idea-cr", "idea_gen", "You are a creative brainstormer. Generate multiple creative ideas for the given brief."),
+            WorkflowStep("ws-dev", "developer", "You are a content developer. Develop the best ideas into full content."),
+            WorkflowStep("ws-review-cr", "reviewer", "You are a constructive critic. Review the content and suggest improvements."),
+            WorkflowStep("ws-polish", "polisher", "You are a perfectionist. Polish the content to a final, publishable state."),
+        ]
+    },
+}
 
 @dataclass
 class Corporate:
@@ -273,3 +386,4 @@ evolution_cfg = EvolutionConfig()
 corp = Corporate()
 experts = ExpertManifest()
 council = ExecutiveCouncil(profile="full")
+api_configs: list[APIConfig] = [copy.deepcopy(a) for a in DEFAULT_APIS]
