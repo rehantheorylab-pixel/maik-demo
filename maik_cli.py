@@ -1,294 +1,423 @@
 #!/usr/bin/env python3
-"""MAIK CLI — Use MAIK from terminal, like claude or opencode.
-
-Usage:
-  maik ask "write a sorting function in Rust"
-  maik route "solve 2x+5=13"
-  maik execute "design a microservice" --domain planning
-  maik learn "problem" --solution "answer" --outcome success
-  maik status
-  maik council
-  maik safety status
-  maik thought "Eureka: agents could use shared memory"
-  maik memory recall "rust ownership"
-  maik schedule enqueue "fix bug" --urgency 0.9
-  maik evolve
-  maik interactive
-
-Build standalone .exe:
-  pyinstaller --onefile --name maik maik_cli.py
-"""
-
-import sys
-import os
-import time
-import json
-import argparse
-from pathlib import Path
-
+"""MAIK CLI — best-in-class terminal UI with Rich."""
+import sys, os, json, time, threading
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from config import TokenBudget, cfg, corp, experts, council
-from blackboard import blackboard, internal_notes
-from router_engine import route, clear_cache, cache_stats, ceo_routing_log
-from tree_engine import execute, get_execution_log, ceo_execution_breakdown
+import click
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+from rich.markdown import Markdown
+from rich.syntax import Syntax
+from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.layout import Layout
+from rich.columns import Columns
+from rich.text import Text
+from rich import box
+from rich.live import Live
+from rich.tree import Tree
+from rich.align import Align
+from rich.prompt import Prompt as RichPrompt
+
+from config import TokenBudget, council
+from router_engine import route, clear_cache, cache_stats
+from tree_engine import execute, ceo_execution_breakdown
 from learn_engine import learn, get_stats
 from scheduler_engine import scheduler
-from cognitive_engine import incubation, abductor, analogizer, wanderer
+from cognitive_engine import incubation
 from memory_engine import thought_vdb, l1_memory
 from evolution_engine import pbt
-from boolean_engine import voter
 from safety_engine import stop_light
-from purity_filter import purity as purity_check
+from boolean_engine import voter
 
-def cmd_ask(args):
-    budget = TokenBudget(total=args.budget)
-    r = route(args.problem, args.domain, budget)
-    print(f"[{r['ceo_name']}] {r['expert']} (conf={r['confidence']:.0%})")
-    if not args.route_only:
-        result = execute(args.problem, args.domain, budget)
-        print(f"\n{result['solution'][:2000]}")
-        print(f"\n[conf={result['confidence']:.0%} depth={result['depth']} agents={len(result['agents_used'])}]")
-        if args.learn:
-            learn(args.problem, result['solution'][:2000], "success",
-                  result['agents_used'], result['confidence'], 0, 0)
+console = Console(legacy_windows=True)
 
-def cmd_route(args):
-    budget = TokenBudget(total=args.budget)
-    r = route(args.problem, args.domain, budget)
-    print(f"CEO:       {r['ceo_name']} ({r['ceo']})")
-    print(f"Expert:    {r['expert']}")
-    print(f"Type:      {r['problem_type']}")
-    print(f"Model:     {r['model']} ({r['model_full']})")
-    print(f"Conf:      {r['confidence']:.0%}")
-    print(f"Budget:    {r['budget']}")
-    print(f"Cached:    {r['cached']}")
+MAIK_LOGO = """
+[bold cyan]  __  __      _   _   _  __  ___ _  _   _   [/bold cyan]
+[bold cyan] |  \\/  |__ _| |_(_)_(_)/ _|/ __| || | /_\\  [/bold cyan]
+[bold cyan] | |\\/| / _`|  _| | | |  _| (__| __ |/ _ \\ [/bold cyan]
+[bold cyan] |_|  |_\\__,_|\\__|_|_|_|_|  \\___|_||_/_/ \\_\\\\[/bold cyan]
+"""
 
-def cmd_execute(args):
-    budget = TokenBudget(total=args.budget)
-    r = execute(args.problem, args.domain, budget, args.depth)
-    print(r['solution'][:2000])
-    print(f"\n[CEO: {r.get('ceo', '?')} conf={r['confidence']:.0%} depth={r['depth']} agents={len(r['agents_used'])}]")
-    if args.verbose:
-        for a in r['agents_used']:
-            print(f"  agent: {a['role']} state={a['state']} tokens={a['tokens']}")
+def make_header():
+    return Panel(
+        Text.from_markup(f"{MAIK_LOGO}\n[dim]Multi-Agent Intelligence Kernel  •  {council.num_ceos} CEOs  •  {council.profile} profile[/dim]"),
+        box=box.ASCII, border_style="cyan", padding=(0, 2)
+    )
 
-def cmd_learn(args):
-    result = learn(args.problem, args.solution, args.outcome,
-                   [{"role": r} for r in args.roles], args.confidence, args.tokens, args.duration)
-    print(f"learned={result['learned']} run_id={result['run_id']}")
-    print(f"ELO: {json.dumps(result['elo_updated'], indent=2)}")
-    print(f"replay_queue={result['replay_queue_size']} total_runs={result['total_runs']}")
+def status_tag(condition, ok_text="active", fail_text="inactive"):
+    return f"[green]{ok_text}[/green]" if condition else f"[red]{fail_text}[/red]"
 
-def cmd_status(args):
+def print_header():
+    console.print(make_header())
+
+@click.group(invoke_without_command=True)
+@click.option("--budget", default=100000, help="Token budget")
+@click.pass_context
+def cli(ctx, budget):
+    ctx.ensure_object(dict)
+    ctx.obj["budget"] = budget
+    if ctx.invoked_subcommand is None:
+        ctx.invoke(interactive)
+
+@cli.command()
+@click.argument("problem")
+@click.option("--domain", "-d", default="", help="Domain hint")
+@click.option("--learn/--no-learn", default=True, help="Auto-learn from result")
+@click.pass_context
+def ask(ctx, problem, domain, learn):
+    """Ask MAIK: route + execute + learn in one shot."""
+    print_header()
+    budget = TokenBudget(total=ctx.obj["budget"])
+
+    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console, transient=True) as p:
+        p.add_task("[cyan]Routing...", total=None)
+        r = route(problem, domain, budget)
+        p.add_task(f"[green]{r['ceo_name']}[/green] -> [bold]{r['expert']}[/bold]", total=None)
+
+    console.print(Panel(
+        Text.from_markup(f"[bold]{r['ceo_name']}[/bold]  ->  [cyan]{r['expert']}[/cyan]  (conf={r['confidence']:.0%})"),
+        box=box.ASCII, border_style="blue", padding=(0, 1)
+    ))
+
+    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console, transient=True) as p:
+        task = p.add_task("[cyan]Executing agent tree...", total=None)
+        result = execute(problem, domain, budget)
+        p.update(task, description="[green]Done[/green]")
+
+    md = Markdown(result['solution'][:5000] or "(no output)")
+    console.print(Panel(md, box=box.ASCII, border_style="green", title="[bold]Response[/bold]"))
+    console.print(f"[dim]conf={result['confidence']:.0%}  depth={result['depth']}  agents={len(result['agents_used'])}  CEO: {result.get('ceo','?')}[/dim]")
+
+    if learn:
+        learn(problem, result['solution'][:500], "success", result['agents_used'], result['confidence'], 0, 0)
+
+@cli.command()
+@click.argument("problem")
+@click.option("--domain", "-d", default="")
+@click.pass_context
+def route_cmd(ctx, problem, domain):
+    """Route a problem to the best expert & CEO."""
+    print_header()
+    budget = TokenBudget(total=ctx.obj["budget"])
+    with console.status("[cyan]Routing...[/cyan]", spinner="dots"):
+        r = route(problem, domain, budget)
+
+    table = Table(box=box.ASCII, border_style="blue")
+    table.add_column("Property", style="bold cyan")
+    table.add_column("Value")
+    table.add_row("CEO", f"{r['ceo_name']} [dim]({r['ceo']})[/dim]")
+    table.add_row("Expert", r['expert'])
+    table.add_row("Problem Type", r['problem_type'])
+    table.add_row("Confidence", f"{r['confidence']:.0%}")
+    table.add_row("Model", f"{r['model']} [dim]({r['model_full']})[/dim]")
+    table.add_row("Budget", str(r['budget']))
+    table.add_row("CEO Budget", r.get('ceo_budget', 'N/A'))
+    table.add_row("Cached", status_tag(r['cached'], "cached", "miss"))
+    table.add_row("Cache Hit Rate", f"{r['cache_stats']['hit_rate']:.0%}")
+    console.print(table)
+
+@cli.command()
+@click.argument("problem")
+@click.option("--domain", "-d", default="")
+@click.option("--depth", default=0)
+@click.pass_context
+def execute_cmd(ctx, problem, domain, depth):
+    """Execute a problem through the agent tree."""
+    print_header()
+    budget = TokenBudget(total=ctx.obj["budget"])
+    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console, transient=True) as p:
+        p.add_task("[cyan]Executing...", total=None)
+        result = execute(problem, domain, budget, depth)
+
+    md = Markdown(result['solution'][:5000] or "(no output)")
+    console.print(Panel(md, box=box.ASCII, border_style="green", title="[bold]Solution[/bold]"))
+    console.print(f"[dim]conf={result['confidence']:.0%}  depth={result['depth']}  agents={len(result['agents_used'])}[/dim]")
+
+@cli.command()
+@click.argument("problem")
+@click.option("--solution", "-s", default="")
+@click.option("--outcome", "-o", default="success", type=click.Choice(["success","failure","partial"]))
+@click.option("--confidence", "-c", default=0.75, type=float)
+@click.pass_context
+def learn_cmd(ctx, problem, solution, outcome, confidence):
+    """Record a learning experience."""
+    print_header()
+    result = learn(problem, solution, outcome, [], confidence, 0, 0)
+    table = Table(box=box.ASCII, border_style="yellow")
+    table.add_column("Metric", style="bold yellow")
+    table.add_column("Value")
+    table.add_row("Learned", status_tag(result['learned']))
+    table.add_row("Run ID", result['run_id'][:12])
+    table.add_row("Total Runs", str(result['total_runs']))
+    table.add_row("Replay Queue", str(result['replay_queue_size']))
+    console.print(table)
+    if result['elo_updated']:
+        elo_table = Table(box=box.ASCII, border_style="dim", title="ELO Ratings")
+        elo_table.add_column("Agent", style="cyan")
+        elo_table.add_column("Rating")
+        for agent, rating in list(result['elo_updated'].items())[:5]:
+            elo_table.add_row(agent, f"{rating:.0f}")
+        console.print(elo_table)
+
+@cli.command()
+def status():
+    """Show system health & stats."""
+    print_header()
     stats = get_stats()
-    print(f"Runs:         {stats['total_runs']}")
-    print(f"Success rate: {stats['success_rate']:.0%}")
-    print(f"Avg conf:     {stats['avg_confidence']:.0%}")
-    print(f"Avg tokens:   {stats['avg_tokens']:.0f}")
-    print(f"ELO ratings:  {len(stats['elo_ratings'])} agents")
-    print(f"Replay queue: {stats['replay_queue']}")
     cs = cache_stats()
-    print(f"Cache:        {cs['size']} entries ({cs['hit_rate']:.0%} hit rate)")
-    print(f"Schedule:     {scheduler.stats()['queue_size']} queued / {scheduler.stats()['completed']} completed")
-    print(f"PBT gen:      {pbt.stats()['generation']}")
-    print(f"Stop light:   {stop_light.status()}")
-    print(f"Council:      {council.num_ceos} CEOs ({council.profile} profile)")
-    ceo_breakdown = ceo_execution_breakdown()
-    if ceo_breakdown:
-        print(f"CEO usage:    {json.dumps(ceo_breakdown)}")
+    s = scheduler.stats()
+    ps = pbt.stats()
+    ceo_counts = ceo_execution_breakdown()
 
-def cmd_council(args):
-    print(f"Profile: {council.profile} ({council.num_ceos} CEOs)")
-    print()
+    grid = Table.grid(padding=1)
+    grid.add_column(style="bold cyan", width=18)
+    grid.add_column(width=30)
+    grid.add_column(style="bold cyan", width=18)
+    grid.add_column(width=30)
+
+    grid.add_row(
+        "Runs", str(stats['total_runs']),
+        "Cache", f"{cs['size']} entries ({cs['hit_rate']:.0%} hit)"
+    )
+    grid.add_row(
+        "Success Rate", f"{stats['success_rate']:.0%}",
+        "Schedule", f"{s['queue_size']} queued, {s['completed']} done"
+    )
+    grid.add_row(
+        "Avg Confidence", f"{stats['avg_confidence']:.0%}",
+        "PBT Gen", str(ps['generation'])
+    )
+    grid.add_row(
+        "Avg Tokens", f"{stats['avg_tokens']:.0f}",
+        "Stop Light", status_tag(stop_light.status() == "green", "green", stop_light.status())
+    )
+    grid.add_row(
+        "ELO Agents", str(len(stats['elo_ratings'])),
+        "Council", f"{council.num_ceos} CEOs ({council.profile})"
+    )
+    grid.add_row(
+        "Replay Queue", str(stats['replay_queue']),
+        "Budget", "active" if stats['total_runs'] > 0 else "idle"
+    )
+    console.print(Panel(grid, box=box.ASCII, border_style="cyan", title="[bold]System Status[/bold]"))
+
+    if ceo_counts:
+        t = Table(box=box.ASCII, border_style="dim", title="CEO Execution Breakdown")
+        t.add_column("CEO", style="cyan")
+        t.add_column("Calls")
+        for ceo_id, count in sorted(ceo_counts.items(), key=lambda x: -x[1]):
+            t.add_row(ceo_id, str(count))
+        console.print(t)
+
+@cli.command()
+def council_cmd():
+    """Show the Executive Council (12 CEOs)."""
+    print_header()
+    console.print(Panel(
+        Text.from_markup(f"[bold]{council.num_ceos} CEOs[/bold]  •  [dim]{council.profile} profile[/dim]"),
+        box=box.ASCII, border_style="cyan"
+    ))
+    table = Table(box=box.ASCII, border_style="blue", title="Executive Council")
+    table.add_column("CEO", style="bold cyan", no_wrap=True)
+    table.add_column("Name", style="white")
+    table.add_column("Managers")
+    table.add_column("APIs")
+    table.add_column("Budget")
     for c in council.list_ceos():
-        print(f"  {c['id']:<18} {c['name']:<25} {c['managers']} managers  {c['api_count']} APIs  {c['budget']}")
+        table.add_row(
+            c['id'], c['name'],
+            str(c['managers']), str(c['api_count']),
+            c['budget']
+        )
+    console.print(table)
 
-def cmd_thought(args):
-    thought_vdb.inject("cli", args.thought, args.tags or [])
-    print(f"Thought injected: {args.thought[:60]}...")
-    if args.query:
-        results = thought_vdb.query(args.query)
-        print(f"\nRelated thoughts ({len(results)}):")
-        for r in results:
-            print(f"  [{r['confidence']:.0%}] {r['thought'][:100]}")
+@cli.command()
+@click.argument("thought")
+@click.option("--tags", "-t", multiple=True, help="Tags")
+@click.option("--query", "-q", default="", help="Query related thoughts")
+def thought(thought, tags, query):
+    """Inject a thought into the Thought VDB."""
+    print_header()
+    thought_vdb.inject("cli", thought, list(tags) if tags else [])
+    console.print(Panel(
+        Text.from_markup(f"[green]+[/green] Thought injected: [italic]{thought[:80]}[/italic]"),
+        box=box.ASCII, border_style="green"
+    ))
+    if query:
+        results = thought_vdb.query(query)
+        if results:
+            t = Table(box=box.ASCII, border_style="dim", title="Related Thoughts")
+            t.add_column("Confidence")
+            t.add_column("Thought")
+            for r in results:
+                t.add_row(f"{r['confidence']:.0%}", r['thought'][:80])
+            console.print(t)
 
-def cmd_memory(args):
-    if args.action == "recall":
-        l1r = l1_memory.recall(args.query)
-        print(f"L1 results ({len(l1r)}):")
+@cli.command()
+@click.option("--query", "-q", default="", help="Search query")
+def memory(query):
+    """Query L1 memory & Thought VDB."""
+    print_header()
+    l1r = l1_memory.recall(query or "general")
+    tvdb = thought_vdb.query(query or "general")
+
+    if l1r:
+        t = Table(box=box.ASCII, border_style="cyan", title="L1 Memory")
+        t.add_column("Score")
+        t.add_column("Content")
         for r in l1r:
-            print(f"  [{r['score']:.2f}] {r['value'][:100]}")
-        tvdb = thought_vdb.query(args.query)
-        print(f"\nThoughts ({len(tvdb)}):")
+            t.add_row(f"{r['score']:.2f}", r['value'][:80])
+        console.print(t)
+
+    if tvdb:
+        t = Table(box=box.ASCII, border_style="magenta", title="Thought VDB")
+        t.add_column("Conf.")
+        t.add_column("Thought")
+        t.add_column("Tags")
         for r in tvdb:
-            print(f"  [{r['confidence']:.0%}] {r['thought'][:100]}")
-    else:
-        l1_memory.store(args.key, args.value)
-        print(f"Stored: {args.key}")
+            tags_str = ", ".join(r.get('tags', [])[:2]) if r.get('tags') else ""
+            t.add_row(f"{r['confidence']:.0%}", r['thought'][:80], tags_str)
+        console.print(t)
 
-def cmd_schedule(args):
-    if args.action == "enqueue":
-        tid = scheduler.enqueue(args.description, args.agent_type, args.cost, args.urgency)
-        print(f"Enqueued: {tid} (queue: {scheduler.stats()['queue_size']})")
-    elif args.action == "status":
-        s = scheduler.stats()
-        print(f"Queue: {s['queue_size']}  Running: {s['running']}  Completed: {s['completed']}")
-        print(f"Budget spent: {s['budget_spent']:.0f}")
-    elif args.action == "next":
-        for t in scheduler.next_up(5):
-            print(f"  [{t['urgency']:.1f}] {t['desc']} ({t['agent']})")
+@cli.command()
+@click.option("--description", "-d", default="", help="Task description")
+@click.option("--urgency", "-u", default=0.5, type=float)
+def schedule_cmd(description, urgency):
+    """Enqueue or view scheduled tasks."""
+    print_header()
+    if description:
+        tid = scheduler.enqueue(description, "general", 100, urgency)
+        console.print(Panel(
+            Text.from_markup(f"[green]+[/green] Enqueued: [cyan]{tid}[/cyan] (queue: {scheduler.stats()['queue_size']})"),
+            box=box.ASCII, border_style="green"
+        ))
+    s = scheduler.stats()
+    t = Table(box=box.ASCII, border_style="yellow", title="Scheduler")
+    t.add_column("Metric")
+    t.add_column("Value")
+    t.add_row("Queued", str(s['queue_size']))
+    t.add_row("Running", str(s['running']))
+    t.add_row("Completed", str(s['completed']))
+    t.add_row("Budget Spent", f"{s['budget_spent']:.0f}")
+    console.print(t)
+    next_tasks = scheduler.next_up(5)
+    if next_tasks:
+        n = Table(box=box.ASCII, border_style="dim", title="Next Up")
+        n.add_column("Urgency")
+        n.add_column("Task")
+        n.add_column("Agent")
+        for nt in next_tasks:
+            n.add_row(f"{nt['urgency']:.1f}", nt['desc'], nt['agent'])
+        console.print(n)
 
-def cmd_evolve(args):
-    gen = pbt.evolve()
+@cli.command()
+def evolve():
+    """Run one PBT evolution generation."""
+    print_header()
+    with console.status("[cyan]Evolving...[/cyan]", spinner="dots"):
+        gen = pbt.evolve()
     s = pbt.stats()
-    print(f"Generation {gen}: pop={s['population']} best={s['best_fitness']:.3f} avg={s['avg_fitness']:.3f}")
+    console.print(Panel(
+        Text.from_markup(
+            f"[bold]Generation {gen}[/bold]\n"
+            f"Population: [cyan]{s['population']}[/cyan]\n"
+            f"Best Fitness: [green]{s['best_fitness']:.3f}[/green]\n"
+            f"Avg Fitness: [yellow]{s['avg_fitness']:.3f}[/yellow]"
+        ),
+        box=box.ASCII, border_style="green", title="[bold]Evolution[/bold]"
+    ))
 
-def cmd_safety(args):
-    if args.action == "status":
-        print(f"Stop light:   {stop_light.status()}")
-        print(f"Kill switch:  false")
+@cli.command()
+@click.option("--action", type=click.Choice(["status","pause","resume"]), default="status")
+def safety(action):
+    """Safety system controls."""
+    print_header()
+    if action == "status":
         from safety_engine import purity as pf
-        print(f"Violations:   {pf.violation_count()}")
-    elif args.action == "pause":
+        table = Table(box=box.ASCII, border_style="red")
+        table.add_column("System", style="bold red")
+        table.add_column("Status")
+        table.add_row("Stop Light", status_tag(stop_light.status() == "green", stop_light.status(), stop_light.status()))
+        table.add_row("Violations", str(pf.violation_count()))
+        table.add_row("Kill Switch", "(inactive)")
+        console.print(table)
+    elif action == "pause":
         stop_light.set_red()
-        print("Paused (red light)")
-    elif args.action == "resume":
+        console.print("[red]Paused (red light)[/red]")
+    elif action == "resume":
         stop_light.set_green()
-        print("Resumed (green light)")
+        console.print("[green]Resumed (green light)[/green]")
 
-def cmd_interactive(args):
-    print("MAIK Interactive — type 'exit' or 'quit' to stop.")
-    print("Prefix commands: /route, /execute, /learn, /status, /council, /help")
+@cli.command()
+def interactive():
+    """Interactive REPL mode with Rich UI."""
+    print_header()
+    console.print(Panel(
+        "[bold cyan]Interactive Mode[/bold cyan]\n"
+        "Type any question to ask MAIK.\n"
+        "[dim]Commands: /route, /execute, /status, /council, /evolve, /memory, /thought, /help, exit[/dim]",
+        box=box.ASCII, border_style="cyan"
+    ))
     while True:
         try:
-            line = input("\nmaik> ").strip()
+            line = RichPrompt.ask("[bold cyan]maik[/bold cyan]")
         except (EOFError, KeyboardInterrupt):
-            print(); break
+            console.print("\n[yellow]Goodbye![/yellow]")
+            break
         if not line:
             continue
-        if line.lower() in ("exit", "quit"):
+        if line.lower() in ("exit", "quit", "q"):
             break
         if line.startswith("/"):
             parts = line[1:].split(maxsplit=1)
             sub = parts[0].lower() if parts else ""
             rest = parts[1] if len(parts) > 1 else ""
             if sub == "route" and rest:
-                r = route(rest)
-                print(f"[{r['ceo_name']}] {r['expert']} conf={r['confidence']:.0%}")
+                budget = TokenBudget(total=100000)
+                r = route(rest, "", budget)
+                console.print(Panel(
+                    Text.from_markup(f"[bold]{r['ceo_name']}[/bold]  ->  [cyan]{r['expert']}[/cyan]  ({r['confidence']:.0%})"),
+                    box=box.ASCII, border_style="blue"
+                ))
             elif sub == "execute" and rest:
-                result = execute(rest)
-                print(result['solution'][:1000])
-            elif sub == "status":
-                cmd_status(args)
+                with console.status("[cyan]Executing...[/cyan]"):
+                    result = execute(rest)
+                md = Markdown(result['solution'][:2000])
+                console.print(Panel(md, box=box.ASCII, border_style="green"))
+            elif sub in ("status", "st"):
+                stats = get_stats()
+                grid = Table.grid(padding=1)
+                grid.add_row("Runs", str(stats['total_runs']), "Success", f"{stats['success_rate']:.0%}")
+                grid.add_row("Cache", f"{cache_stats()['size']} entries", "Council", f"{council.num_ceos} CEOs")
+                console.print(Panel(grid, box=box.ASCII, border_style="cyan"))
             elif sub == "council":
-                cmd_council(args)
+                for c in council.list_ceos():
+                    console.print(f"  [cyan]{c['id']:<18}[/cyan] {c['name']:<25} [dim]{c['managers']} mgrs[/dim]")
+            elif sub == "evolve":
+                gen = pbt.evolve()
+                console.print(f"[green]Generation {gen}[/green]")
+            elif sub in ("memory", "mem"):
+                l1r = l1_memory.recall(rest or "general")
+                for r in l1r[:3]:
+                    console.print(f"  [dim]{r['score']:.2f}[/dim] {r['value'][:80]}")
+            elif sub == "thought" and rest:
+                thought_vdb.inject("interactive", rest)
+                console.print("[green]Thought injected[/green]")
             elif sub == "help":
-                print("Commands: /route <q>, /execute <q>, /learn <q> <outcome>, /status, /council, exit")
+                console.print("[cyan]/route[/cyan] <q>  [cyan]/execute[/cyan] <q>  [cyan]/status[/cyan]  [cyan]/council[/cyan]  [cyan]/evolve[/cyan]  [cyan]/thought[/cyan]  [cyan]/memory[/cyan]")
             else:
-                print(f"Unknown: /{sub}")
+                console.print(f"[red]Unknown: /{sub}[/red]")
         else:
-            budget = TokenBudget(total=args.budget)
-            r = route(line, "", budget)
-            result = execute(line, "", budget)
-            print(f"[{r['ceo_name']} → {r['expert']}]")
-            print(result['solution'][:1000])
+            budget = TokenBudget(total=100000)
+            with console.status("[cyan]Routing...[/cyan]", spinner="dots"):
+                r = route(line, "", budget)
+            console.print(f"[bold]{r['ceo_name']}[/bold]  ->  [cyan]{r['expert']}[/cyan]")
+            with console.status("[cyan]Executing...[/cyan]"):
+                result = execute(line, "", budget)
+            md = Markdown(result['solution'][:2000])
+            console.print(Panel(md, box=box.ASCII, border_style="green"))
             learn(line, result['solution'][:500], "success", result['agents_used'], result['confidence'], 0, 0)
 
-def main():
-    parser = argparse.ArgumentParser(description="MAIK — Multi-Agent Intelligence Kernel CLI",
-                                     formatter_class=argparse.RawDescriptionHelpFormatter,
-                                     epilog="""Examples:
-  maik ask "write quicksort in Rust"
-  maik route "solve 2x+5=13" --domain math
-  maik execute "design microservice" --domain planning --verbose
-  maik status
-  maik council
-  maik interactive
-""")
-    parser.add_argument("--budget", type=int, default=100000, help="Token budget")
-    sub = parser.add_subparsers(dest="command")
-
-    p_ask = sub.add_parser("ask", help="Ask a question (route + execute)")
-    p_ask.add_argument("problem", help="Your question")
-    p_ask.add_argument("--domain", "-d", default="", help="Domain hint")
-    p_ask.add_argument("--route-only", action="store_true", help="Only route, don't execute")
-    p_ask.add_argument("--learn", action="store_true", help="Learn from the result")
-
-    p_route = sub.add_parser("route", help="Route a problem to the best expert")
-    p_route.add_argument("problem", help="Problem description")
-    p_route.add_argument("--domain", "-d", default="", help="Domain hint")
-
-    p_exec = sub.add_parser("execute", help="Execute a problem through the agent tree")
-    p_exec.add_argument("problem", help="Problem to solve")
-    p_exec.add_argument("--domain", "-d", default="")
-    p_exec.add_argument("--depth", type=int, default=0)
-    p_exec.add_argument("--verbose", "-v", action="store_true")
-
-    p_learn = sub.add_parser("learn", help="Record a learning experience")
-    p_learn.add_argument("problem")
-    p_learn.add_argument("--solution", "-s", default="")
-    p_learn.add_argument("--outcome", "-o", default="success", choices=["success","failure","partial"])
-    p_learn.add_argument("--roles", "-r", nargs="*", default=["agent"])
-    p_learn.add_argument("--confidence", "-c", type=float, default=0.75)
-    p_learn.add_argument("--tokens", type=int, default=0)
-    p_learn.add_argument("--duration", type=int, default=0)
-
-    sub.add_parser("status", help="Show system status")
-    sub.add_parser("council", help="Show Executive Council info")
-    sub.add_parser("interactive", help="Interactive REPL mode")
-
-    p_thought = sub.add_parser("thought", help="Inject or query thoughts")
-    p_thought.add_argument("thought", help="Thought content")
-    p_thought.add_argument("--tags", "-t", nargs="*", default=[])
-    p_thought.add_argument("--query", "-q", default="", help="Query related thoughts")
-
-    p_mem = sub.add_parser("memory", help="Memory operations")
-    p_mem.add_argument("action", choices=["recall", "store"])
-    p_mem.add_argument("--query", "-q", default="")
-    p_mem.add_argument("--key", "-k", default="")
-    p_mem.add_argument("--value", "-v", default="")
-
-    p_sched = sub.add_parser("schedule", help="Schedule operations")
-    p_sched.add_argument("action", choices=["enqueue", "status", "next"])
-    p_sched.add_argument("--description", "-d", default="")
-    p_sched.add_argument("--agent-type", default="general")
-    p_sched.add_argument("--cost", type=float, default=100.0)
-    p_sched.add_argument("--urgency", "-u", type=float, default=0.5)
-
-    sub.add_parser("evolve", help="Run one PBT evolution generation")
-
-    p_safety = sub.add_parser("safety", help="Safety operations")
-    p_safety.add_argument("action", choices=["status", "pause", "resume"])
-
-    args = parser.parse_args()
-
-    if args.command == "ask":
-        cmd_ask(args)
-    elif args.command == "route":
-        cmd_route(args)
-    elif args.command == "execute":
-        cmd_execute(args)
-    elif args.command == "learn":
-        cmd_learn(args)
-    elif args.command == "status":
-        cmd_status(args)
-    elif args.command == "council":
-        cmd_council(args)
-    elif args.command == "thought":
-        cmd_thought(args)
-    elif args.command == "memory":
-        cmd_memory(args)
-    elif args.command == "schedule":
-        cmd_schedule(args)
-    elif args.command == "evolve":
-        cmd_evolve(args)
-    elif args.command == "safety":
-        cmd_safety(args)
-    elif args.command == "interactive":
-        cmd_interactive(args)
-    else:
-        parser.print_help()
-
 if __name__ == "__main__":
-    main()
+    cli()
