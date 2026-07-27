@@ -127,8 +127,46 @@ class HierarchicalChunker:
             chunks.append(". ".join(current) + ".")
         return chunks
 
+class TrainingPipeline:
+    def __init__(self):
+        self._gold_repos: list[dict] = []
+        self._distillation_log: list[dict] = []
+        self._pattern_db: dict[str, list[str]] = {}
+
+    def add_gold(self, name: str, content: str, domain: str = "general") -> str:
+        gid = hashlib.md5(f"{name}:{time.time()}".encode()).hexdigest()[:8]
+        self._gold_repos.append({"id": gid, "name": name, "content": content[:500], "domain": domain, "added": time.time()})
+        return gid
+
+    def remove_gold(self, gold_id: str) -> bool:
+        for i, g in enumerate(self._gold_repos):
+            if g["id"] == gold_id:
+                self._gold_repos.pop(i)
+                return True
+        return False
+
+    def distill(self, source_model: str, target_model: str, data: str) -> dict:
+        entry = {"source": source_model, "target": target_model, "data": data[:100], "timestamp": time.time()}
+        self._distillation_log.append(entry)
+        return {"status": "distilled", "source": source_model, "target": target_model, "size": len(data)}
+
+    def store_pattern(self, key: str, pattern: str):
+        self._pattern_db.setdefault(key, []).append(pattern)
+
+    def get_patterns(self, key: str) -> list[str]:
+        return self._pattern_db.get(key, [])
+
+    def gold_stats(self) -> dict:
+        return {"total_gold": len(self._gold_repos), "total_distillations": len(self._distillation_log),
+                "total_patterns": sum(len(v) for v in self._pattern_db.values()),
+                "domains": list(set(g["domain"] for g in self._gold_repos))}
+
+    def list_gold(self) -> list[dict]:
+        return [{"id": g["id"], "name": g["name"], "domain": g["domain"], "content": g["content"][:80]} for g in self._gold_repos]
+
 incubation = IncubationEngine()
 abductor = AbductiveReasoner()
 analogizer = AnalogicalMapper()
 wanderer = WanderingThoughts(["code", "math", "creative", "design", "security", "data", "test", "deploy"])
 chunker = HierarchicalChunker()
+training = TrainingPipeline()

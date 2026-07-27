@@ -105,6 +105,15 @@ class PBTEngine:
             "history_length": len(self._history),
         }
 
+    def population_detail(self) -> list[dict]:
+        return [{"id": g.id, "fitness": round(g.fitness, 3), "age": g.age} for g in sorted(self._population, key=lambda x: -x.fitness)]
+
+    def fitness_history(self) -> list[dict]:
+        return [{"gen": h["generation"], "best": round(h["best_fitness"], 3), "survivors": h["survivors"]} for h in self._history]
+
+    def clear_history(self):
+        self._history = []
+
 class RewardShaper:
     def __init__(self):
         self._difficulty_map: dict[str, float] = {}

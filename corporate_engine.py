@@ -1,6 +1,4 @@
-import time
-import hashlib
-import uuid
+import time, hashlib, uuid
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -93,112 +91,176 @@ class PermissionSystem:
         self._permissions.get(role, set()).discard(action)
 
 @dataclass
-class OrgEmployee:
+class OrgNode:
     id: str
     name: str
-    role: str
+    node_type: str = "agent"
     parent_id: str = ""
-    skills: list = field(default_factory=list)
-    status: str = "idle"
-    tasks_completed: int = 0
-    success_rate: float = 1.0
-
-@dataclass
-class OrgManager:
-    id: str
-    name: str
-    parent_ceo_id: str
-    employees: list = field(default_factory=list)
-
-@dataclass
-class OrgCEO:
-    id: str
-    name: str
-    managers: list = field(default_factory=list)
+    children: list = field(default_factory=list)
+    metadata: dict = field(default_factory=lambda: {
+        "status": "idle", "tasks": 0, "elo": 1000, "agent_count": 0, "descendant_count": 0
+    })
 
 class OrgChart:
     def __init__(self):
-        self.ceos: dict[str, OrgCEO] = {}
+        self._nodes: dict[str, OrgNode] = {}
 
-    def add_ceo(self, ceo_id: str, name: str) -> OrgCEO:
-        o = OrgCEO(ceo_id, name)
-        self.ceos[ceo_id] = o
-        return o
+    def add_node(self, node_id: str, name: str, node_type: str = "agent", parent_id: str = "") -> OrgNode:
+        node = OrgNode(id=node_id, name=name, node_type=node_type, parent_id=parent_id)
+        self._nodes[node_id] = node
+        if parent_id and parent_id in self._nodes:
+            if node_id not in self._nodes[parent_id].children:
+                self._nodes[parent_id].children.append(node_id)
+        self._link_agent(node_id, node_type)
+        self._recalc_counts()
+        return node
+
+    def remove_node(self, node_id: str) -> bool:
+        if node_id not in self._nodes:
+            return False
+        node = self._nodes[node_id]
+        if node.parent_id and node.parent_id in self._nodes:
+            parent = self._nodes[node.parent_id]
+            if node_id in parent.children:
+                parent.children.remove(node_id)
+        self._remove_descendants(node_id)
+        del self._nodes[node_id]
+        self._recalc_counts()
+        return True
+
+    def _remove_descendants(self, node_id: str):
+        if node_id not in self._nodes:
+            return
+        for cid in list(self._nodes[node_id].children):
+            self._remove_descendants(cid)
+            if cid in self._nodes:
+                del self._nodes[cid]
+
+    def add_child(self, parent_id: str, child_id: str, child_name: str, child_type: str = "agent") -> Optional[OrgNode]:
+        return self.add_node(child_id, child_name, child_type, parent_id)
+
+    def get_node(self, node_id: str) -> Optional[OrgNode]:
+        return self._nodes.get(node_id)
+
+    def get_children(self, node_id: str) -> list[OrgNode]:
+        node = self._nodes.get(node_id)
+        if not node:
+            return []
+        return [self._nodes[cid] for cid in node.children if cid in self._nodes]
+
+    def get_descendant_count(self, node_id: str) -> int:
+        count = 0
+        node = self._nodes.get(node_id)
+        if not node:
+            return 0
+        for cid in node.children:
+            count += 1
+            count += self.get_descendant_count(cid)
+        return count
+
+    def get_sub_agent_count(self, node_id: str, agent_type: str = "") -> int:
+        count = 0
+        node = self._nodes.get(node_id)
+        if not node:
+            return 0
+        for cid in node.children:
+            child = self._nodes.get(cid)
+            if child:
+                if not agent_type or child.node_type == agent_type:
+                    count += 1
+                count += self.get_sub_agent_count(cid, agent_type)
+        return count
+
+    def _link_agent(self, node_id: str, node_type: str):
+        agent_tracker.register(node_id, node_type)
+
+    def _recalc_counts(self):
+        for node_id in list(self._nodes.keys()):
+            node = self._nodes.get(node_id)
+            if not node:
+                continue
+            node.metadata["descendant_count"] = self.get_descendant_count(node_id)
+
+    def add_ceo(self, ceo_id: str, name: str) -> OrgNode:
+        return self.add_node(ceo_id, name, "ceo")
 
     def remove_ceo(self, ceo_id: str) -> bool:
-        return self.ceos.pop(ceo_id, None) is not None
+        return self.remove_node(ceo_id)
 
-    def add_manager(self, ceo_id: str, mgr_id: str, mgr_name: str) -> Optional[OrgManager]:
-        ceo = self.ceos.get(ceo_id)
-        if not ceo:
+    def add_manager(self, ceo_id: str, mgr_id: str, mgr_name: str) -> Optional[OrgNode]:
+        ceo = self._nodes.get(ceo_id)
+        if not ceo or ceo.node_type != "ceo":
             return None
-        m = OrgManager(mgr_id, mgr_name, ceo_id)
-        ceo.managers.append(m)
-        return m
+        return self.add_node(mgr_id, mgr_name, "manager", ceo_id)
 
     def remove_manager(self, ceo_id: str, mgr_id: str) -> bool:
-        ceo = self.ceos.get(ceo_id)
-        if not ceo:
+        mgr = self._nodes.get(mgr_id)
+        if not mgr or mgr.parent_id != ceo_id:
             return False
-        for i, m in enumerate(ceo.managers):
-            if m.id == mgr_id:
-                ceo.managers.pop(i)
-                return True
-        return False
+        return self.remove_node(mgr_id)
 
-    def add_employee(self, ceo_id: str, mgr_id: str, emp_id: str, emp_name: str, role: str = "employee") -> Optional[OrgEmployee]:
-        ceo = self.ceos.get(ceo_id)
-        if not ceo:
+    def add_employee(self, ceo_id: str, mgr_id: str, emp_id: str, emp_name: str, role: str = "employee") -> Optional[OrgNode]:
+        mgr = self._nodes.get(mgr_id)
+        if not mgr:
             return None
-        for m in ceo.managers:
-            if m.id == mgr_id:
-                e = OrgEmployee(emp_id, emp_name, role, mgr_id)
-                m.employees.append(e)
-                return e
-        return None
+        return self.add_node(emp_id, emp_name, role, mgr_id)
 
     def remove_employee(self, ceo_id: str, mgr_id: str, emp_id: str) -> bool:
-        ceo = self.ceos.get(ceo_id)
-        if not ceo:
+        emp = self._nodes.get(emp_id)
+        if not emp or emp.parent_id != mgr_id:
             return False
-        for m in ceo.managers:
-            if m.id == mgr_id:
-                for i, e in enumerate(m.employees):
-                    if e.id == emp_id:
-                        m.employees.pop(i)
-                        return True
-        return False
+        return self.remove_node(emp_id)
 
     def get_mind_map(self) -> dict:
         result = {}
-        for ceo_id, ceo in self.ceos.items():
-            mgrs = {}
-            for m in ceo.managers:
-                mgrs[m.id] = {
-                    "name": m.name,
-                    "employees": [{"id": e.id, "name": e.name, "role": e.role, "status": e.status, "tasks": e.tasks_completed} for e in m.employees]
-                }
-            result[ceo_id] = {"name": ceo.name, "managers": mgrs}
+        for node_id, node in self._nodes.items():
+            if node.node_type == "ceo":
+                result[node_id] = self._node_to_dict(node)
         return result
 
-    def to_tree(self, ceo_id: str = "") -> dict:
-        if ceo_id:
-            result = {}
-            ceo = self.ceos.get(ceo_id)
-            if ceo:
-                result[ceo.id] = {"name": ceo.name, "children": {}}
-                for m in ceo.managers:
-                    result[ceo.id]["children"][m.id] = {"name": m.name, "children": {}}
-                    for e in m.employees:
-                        result[ceo.id]["children"][m.id]["children"][e.id] = {"name": e.name, "role": e.role}
-            return result
-        return self.get_mind_map()
+    def _node_to_dict(self, node: OrgNode) -> dict:
+        return {
+            "name": node.name,
+            "type": node.node_type,
+            "children": {cid: self._node_to_dict(self._nodes[cid]) for cid in node.children if cid in self._nodes},
+            "descendants": node.metadata.get("descendant_count", 0),
+            "sub_agents": len(node.children),
+            "agent_data": self._get_agent_data(node.id),
+        }
+
+    def _get_agent_data(self, agent_id: str) -> dict:
+        stats = agent_tracker.stats(agent_id)
+        if stats:
+            return {"elo": stats.get("elo", 1000), "tasks": stats.get("tasks", 0),
+                    "success_rate": stats.get("successes", 0) / max(stats.get("tasks", 0), 1),
+                    "status": stats.get("status", "idle")}
+        return {"elo": 1000, "tasks": 0, "success_rate": 0.0, "status": "unknown"}
+
+    def to_tree(self, node_id: str = "") -> dict:
+        if node_id:
+            node = self._nodes.get(node_id)
+            if node:
+                return {node.id: self._node_to_dict(node)}
+            return {}
+        result = {}
+        for nid, node in self._nodes.items():
+            if node.node_type == "ceo":
+                result[nid] = self._node_to_dict(node)
+        return result
 
     def total_count(self) -> dict:
-        ceos = len(self.ceos)
-        mgrs = sum(len(c.managers) for c in self.ceos.values())
-        emps = sum(len(e.employees) for c in self.ceos.values() for e in c.managers)
-        return {"ceos": ceos, "managers": mgrs, "employees": emps}
+        ceos = sum(1 for n in self._nodes.values() if n.node_type == "ceo")
+        mgrs = sum(1 for n in self._nodes.values() if n.node_type == "manager")
+        agents = sum(1 for n in self._nodes.values() if n.node_type == "agent")
+        employees = sum(1 for n in self._nodes.values() if n.node_type == "employee")
+        return {"ceos": ceos, "managers": mgrs, "employees": employees, "agents": agents,
+                "total": len(self._nodes), "sub_agents": agents + employees}
+
+    def find_by_type(self, node_type: str) -> list[OrgNode]:
+        return [n for n in self._nodes.values() if n.node_type == node_type]
+
+    def find_by_name(self, name: str) -> list[OrgNode]:
+        return [n for n in self._nodes.values() if name.lower() in n.name.lower()]
 
 org_chart = OrgChart()
 
@@ -207,6 +269,8 @@ class AgentTracker:
         self._agents: dict[str, dict] = {}
 
     def register(self, agent_id: str, role: str, model: str = ""):
+        if agent_id in self._agents:
+            return
         self._agents[agent_id] = {
             "role": role, "model": model, "tasks": 0, "successes": 0,
             "failures": 0, "total_confidence": 0.0, "elo": 1000.0,
@@ -254,6 +318,17 @@ class AgentTracker:
                  "tasks": a["tasks"], "success_rate": a["successes"]/max(a["tasks"],1),
                  "status": a["status"]}
                 for aid, a in sorted_agents[:top_k]]
+
+    def linked_org_stats(self, node_id: str) -> dict:
+        a = self._agents.get(node_id, {})
+        org_node = org_chart.get_node(node_id)
+        return {
+            "id": node_id, "role": a.get("role", "?"), "elo": a.get("elo", 1000),
+            "tasks": a.get("tasks", 0), "success_rate": a.get("successes", 0) / max(a.get("tasks", 0), 1),
+            "status": a.get("status", "idle"),
+            "sub_agents": len(org_node.children) if org_node else 0,
+            "descendants": org_node.metadata.get("descendant_count", 0) if org_node else 0,
+        }
 
 agent_tracker = AgentTracker()
 corp_library = CorporateLibrary()

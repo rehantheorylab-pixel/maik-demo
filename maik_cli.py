@@ -28,11 +28,31 @@ from learn_engine import learn, get_stats
 from scheduler_engine import scheduler
 from cognitive_engine import incubation
 from memory_engine import thought_vdb, l1_memory
-from evolution_engine import pbt
+from evolution_engine import pbt as pbt_engine
 from safety_engine import stop_light
 from boolean_engine import voter
 from meta_controller import prompt_selector, workflow_engine, meta_agent, PROMPT_TEMPLATES
 from corporate_engine import org_chart, agent_tracker, corp_library, perm_system
+from governance_engine import voting_engine, logic_probe, sentinel, sheriff, session_manager, cognitive_controls, pbt_tracker, training
+from cognitive_engine import incubation as incubation_engine
+from session_compactor import session_archiver, summary_generator, agent_context_builder, compaction_manager
+from file_access_agent import file_agent
+from browser_agent import browser, screen_reader
+from computer_use_agent import computer
+from code_analysis_engine import analyzer
+from web_research_agent import researcher
+from pixel_vision import pixel_vision
+from api_router import router as api_router
+from cli_plugin import cli_plugins
+from github_integration import github
+from auth_manager import auth
+from agent_tree import agent_tree, AgentStatus
+from mindmap_ui import render_mind_map_json, render_tree_text
+from unified_vision import unified_vision
+
+# Alias for UI compatibility
+vote_manager = voting_engine
+incubation = incubation_engine
 
 console = Console(legacy_windows=True)
 
@@ -155,7 +175,7 @@ def learn_cmd(problem, solution, outcome, confidence):
 def status_cmd():
     """Show system health & all stats."""
     print_header()
-    stats = get_stats(); cs = cache_stats(); s = scheduler.stats(); ps = pbt.stats()
+    stats = get_stats(); cs = cache_stats(); s = scheduler.stats(); ps = pbt_engine.stats()
     ceo_counts = ceo_execution_breakdown()
     at = agent_tracker.stats()
     oc = org_chart.total_count()
@@ -277,8 +297,8 @@ def evolve():
     """Run one PBT evolution generation."""
     print_header()
     with console.status("[cyan]Evolving...[/cyan]", spinner="dots"):
-        gen = pbt.evolve()
-    s = pbt.stats()
+        gen = pbt_engine.evolve()
+        s = pbt_engine.stats()
     console.print(Panel(
         Text.from_markup(f"[bold]Generation {gen}[/bold]\nPopulation: [cyan]{s['population']}[/cyan]\nBest Fitness: [green]{s['best_fitness']:.3f}[/green]\nAvg Fitness: [yellow]{s['avg_fitness']:.3f}[/yellow]"),
         box=box.ASCII, border_style="green", title="[bold]Evolution[/bold]"
@@ -317,19 +337,31 @@ def org_show():
         console.print("[yellow]No CEOs in org chart. Use 'maik org add-ceo' to start.[/yellow]")
         return
     tree_display = Tree("[bold cyan]🏢 Corporate Org Chart[/bold cyan]")
+
+    def add_nodes(branch, children_dict, depth=0):
+        for cid, cdata in children_dict.items():
+            ad = cdata.get("agent_data", {})
+            st = "🟢" if ad.get("status")=="idle" else "🟡"
+            subs = cdata.get("sub_agents", 0)
+            descs = cdata.get("descendants", 0)
+            count_str = f" [{subs} direct, {descs} total]" if descs else ""
+            nm = cdata.get("name", cid)
+            tp = cdata.get("type", "?")
+            elo = ad.get("elo", 1000)
+            elo_str = f" ELO:{elo}" if elo != 1000 else ""
+            label = f"{st} [bold{'green' if tp=='ceo' else 'yellow' if tp=='manager' else 'cyan' if tp=='agent' else 'white'}]{nm}[/bold{'green' if tp=='ceo' else 'yellow' if tp=='manager' else 'cyan' if tp=='agent' else 'white'}] [dim]({cid}, {tp}{elo_str})[/dim]{count_str}"
+            child_branch = branch.add(label)
+            if cdata.get("children"):
+                add_nodes(child_branch, cdata["children"], depth+1)
+
     for ceo_id, ceo_data in mind.items():
-        ceo_branch = tree_display.add(f"[bold green]👤 {ceo_data['name']}[/bold green] [dim]({ceo_id})[/dim]")
-        mgrs = ceo_data.get("managers", {})
-        if not mgrs:
-            ceo_branch.add("[dim]No managers yet[/dim]")
-        for mgr_id, mgr_data in mgrs.items():
-            mgr_branch = ceo_branch.add(f"[yellow]👤 {mgr_data['name']}[/yellow] [dim]({mgr_id})[/dim]")
-            emps = mgr_data.get("employees", [])
-            if not emps:
-                mgr_branch.add("[dim]No employees yet[/dim]")
-            for emp in emps:
-                st = "🟢" if emp["status"]=="idle" else "🟡"
-                mgr_branch.add(f"{st} [white]{emp['name']}[/white] [dim]({emp['role']}, {emp['tasks']} tasks)[/dim]")
+        ceo_branch = tree_display.add(f"[bold green]👤 {ceo_data['name']}[/bold green] [dim]({ceo_id})[/dim] — {ceo_data.get('descendants',0)} total under")
+        if ceo_data.get("children"):
+            add_nodes(ceo_branch, ceo_data["children"])
+        else:
+            ceo_branch.add("[dim]No sub-agents yet. Use 'maik org add-sub-agent' to add.[/dim]")
+    counts = org_chart.total_count()
+    console.print(f"[dim]Total: {counts['total']} nodes  •  {counts['ceos']} CEOs  •  {counts['managers']} Managers  •  {counts['employees']} Employees  •  {counts['agents']} Agents  •  {counts['sub_agents']} Sub-agents[/dim]")
     console.print(tree_display)
 
 @org.command()
@@ -364,6 +396,19 @@ def add_manager(ceo_id, mgr_id, mgr_name):
         console.print(f"[green]+[/green] Manager [bold]{mgr_name}[/bold] ({mgr_id}) under {ceo_id}")
     else:
         console.print(f"[red]CEO {ceo_id} not found[/red]")
+
+@org.command()
+@click.argument("parent_id")
+@click.argument("child_id")
+@click.argument("child_name")
+@click.option("--type", "-t", default="agent", help="Node type: agent, sub-agent, worker")
+def add_sub_agent(parent_id, child_id, child_name, type):
+    """Add a sub-agent under any node (arbitrary depth)."""
+    n = org_chart.add_child(parent_id, child_id, child_name, type)
+    if n:
+        console.print(f"[green]+[/green] Sub-agent [bold]{child_name}[/bold] ({child_id}, {type}) under {parent_id}")
+    else:
+        console.print(f"[red]Parent {parent_id} not found[/red]")
 
 @org.command()
 @click.argument("ceo_id")
@@ -666,6 +711,364 @@ def search(query, domain):
 
 # === PERMISSION COMMANDS ===
 @cli.group()
+def vote():
+    """Voting and consensus system."""
+
+@vote.command(name="list")
+def vote_list():
+    """List open votes."""
+    print_header()
+    votes = voting_engine.list_open()
+    if not votes:
+        console.print("[yellow]No open votes[/yellow]"); return
+    t = Table(box=box.ASCII, border_style="cyan", title="Open Votes")
+    t.add_column("ID", style="bold cyan"); t.add_column("Topic"); t.add_column("Options"); t.add_column("Votes")
+    for v in votes:
+        t.add_row(v["id"], v["topic"][:40], ", ".join(v.get("options",["?"])), str(v["votes"]))
+    console.print(t)
+
+@vote.command()
+@click.argument("topic")
+@click.argument("options")
+def create(topic, options):
+    """Create a vote. Options as comma-separated."""
+    opts = [o.strip() for o in options.split(",")]
+    vid = voting_engine.create_vote(topic, "", opts, "cli")
+    console.print(f"[green]+[/green] Vote created: [bold]{topic}[/bold] ({vid})")
+
+@vote.command()
+@click.argument("vote_id")
+@click.argument("voter")
+@click.argument("choice")
+def cast(vote_id, voter, choice):
+    """Cast a vote."""
+    if voting_engine.cast(vote_id, voter, choice):
+        console.print(f"[green]✓[/green] {voter} voted for [bold]{choice}[/bold]")
+    else:
+        console.print(f"[red]Failed to cast vote. Check vote ID and choice.[/red]")
+
+@vote.command()
+@click.argument("vote_id")
+def close(vote_id):
+    """Close a vote and show results."""
+    result = voting_engine.close(vote_id)
+    if not result:
+        console.print(f"[red]Vote '{vote_id}' not found[/red]"); return
+    t = Table(box=box.ASCII, border_style="green", title=f"Results: {result['topic']}")
+    t.add_column("Option"); t.add_column("Votes"); t.add_column("Weighted")
+    for opt in result["options"] if "options" in result else result["counts"]:
+        t.add_row(opt, str(result["counts"].get(opt,0)), f"{result['weighted'].get(opt,0):.1f}")
+    t.add_row("[bold]Winner[/bold]", f"[green]{result['winner']}[/green]", "")
+    console.print(t)
+
+@vote.command()
+def results():
+    """Show all votes and results."""
+    all_v = voting_engine.all_votes()
+    if not all_v:
+        console.print("[yellow]No votes yet[/yellow]"); return
+    t = Table(box=box.ASCII, border_style="cyan", title="All Votes")
+    t.add_column("ID"); t.add_column("Topic"); t.add_column("Status"); t.add_column("Total")
+    for v in all_v:
+        t.add_row(v["id"], v["topic"][:30], v["status"], str(v["total"]))
+    console.print(t)
+
+@cli.group()
+def probe():
+    """Logic probe — track contradictions & flagged thoughts."""
+
+@probe.command(name="list")
+def probe_list():
+    """List all probed thoughts."""
+    print_header()
+    pts = logic_probe.all_thoughts()
+    if not pts:
+        console.print("[yellow]No probed thoughts[/yellow]"); return
+    t = Table(box=box.ASCII, border_style="magenta", title="Probed Thoughts")
+    t.add_column("ID"); t.add_column("Thought"); t.add_column("Agent")
+    t.add_column("Category"); t.add_column("Severity"); t.add_column("Flagged"); t.add_column("Resolved")
+    for p in pts:
+        t.add_row(p["id"], p["thought"][:60], p["agent"], p["category"], f"{p['severity']:.2f}",
+                 status_tag(p["flagged"], "⚠", "✓"), status_tag(p["resolved"], "✓", ""))
+    console.print(t)
+
+@probe.command()
+def flagged():
+    """Show flagged contradictions."""
+    print_header()
+    flagged_list = logic_probe.flagged_thoughts()
+    if not flagged_list:
+        console.print("[green]No flagged thoughts[/green]"); return
+    t = Table(box=box.ASCII, border_style="red", title=f"🚩 Flagged Thoughts ({len(flagged_list)})")
+    t.add_column("ID"); t.add_column("Thought"); t.add_column("Agent"); t.add_column("Severity"); t.add_column("Resolved")
+    for p in flagged_list:
+        t.add_row(p["id"], p["thought"][:60], p["agent"], f"{p['severity']:.2f}", status_tag(p["resolved"], "yes", "no"))
+    console.print(t)
+
+@probe.command()
+@click.argument("thought")
+@click.argument("agent")
+@click.option("--category", "-c", default="general")
+@click.option("--severity", "-s", default=0.3, type=float)
+def add(thought, agent, category, severity):
+    """Add a thought to the probe."""
+    pt = logic_probe.probe(thought, agent, category, severity)
+    flag = "⚠ FLAGGED" if pt.flagged else "✓"
+    console.print(f"[green]+[/green] Thought probed: [bold]{thought[:60]}[/bold] {flag}")
+
+@probe.command()
+@click.argument("thought_id")
+def resolve(thought_id):
+    """Resolve a flagged thought."""
+    logic_probe.resolve(thought_id)
+    console.print(f"[green]✓[/green] Thought {thought_id} resolved")
+
+@cli.group()
+def sentinel_cmd():
+    """Sentinel system monitor."""
+
+@sentinel_cmd.command(name="status")
+def sentinel_status():
+    """Show sentinel health status."""
+    print_header()
+    h = sentinel.health()
+    t = Table(box=box.ASCII, border_style="cyan", title="Sentinel Health")
+    t.add_column("Metric", style="bold"); t.add_column("Value")
+    t.add_row("Status", status_tag(h["status"] == "healthy", h["status"], h["status"]))
+    t.add_row("Uptime", f"{h['uptime']:.0f}s"); t.add_row("Active Agents", str(h["agents_active"]))
+    t.add_row("CPU", f"{h['cpu']:.1f}%"); t.add_row("Memory", f"{h['memory']:.1f}%")
+    t.add_row("Recent Alerts", str(h["alerts"])); t.add_row("Total Alerts", str(h["total_alerts"]))
+    console.print(t)
+
+@sentinel_cmd.command()
+def alerts():
+    """Show recent sentinel alerts."""
+    al = sentinel.recent_alerts()
+    if not al:
+        console.print("[green]No recent alerts[/green]"); return
+    t = Table(box=box.ASCII, border_style="yellow", title="Recent Alerts")
+    t.add_column("Level", style="bold"); t.add_column("Source"); t.add_column("Message"); t.add_column("Time")
+    for a in al:
+        t.add_row(a["level"], a["source"], a["message"], a["time"])
+    console.print(t)
+
+@sentinel_cmd.command()
+def history():
+    """Show sentinel health history."""
+    hist = sentinel.history(15)
+    if not hist:
+        console.print("[yellow]No history yet[/yellow]"); return
+    t = Table(box=box.ASCII, border_style="dim", title="Health History (last 15)")
+    t.add_column("Time"); t.add_column("Status"); t.add_column("Agents"); t.add_column("CPU"); t.add_column("Memory")
+    for h in hist:
+        t.add_row(h["time"], h["status"], str(h["agents"]), f"{h['cpu']:.1f}%", f"{h['memory']:.1f}%")
+    console.print(t)
+
+@cli.group()
+def sheriff_cmd():
+    """Sheriff rule manager."""
+
+@sheriff_cmd.command(name="list")
+def sheriff_list():
+    """List all sheriff rules."""
+    print_header()
+    rules = sheriff.list_rules()
+    t = Table(box=box.ASCII, border_style="cyan", title=f"Sheriff Rules ({len(rules)})")
+    t.add_column("ID", style="bold"); t.add_column("Name"); t.add_column("Action")
+    t.add_column("Priority"); t.add_column("Enabled")
+    for r in rules:
+        t.add_row(r["id"], r["name"], r["action"], str(r["priority"]), status_tag(r["enabled"], "on", "off"))
+    console.print(t)
+
+@sheriff_cmd.command()
+@click.argument("name")
+@click.argument("description")
+@click.argument("action")
+@click.option("--priority", "-p", default=5, type=int)
+def add_rule(name, description, action, priority):
+    """Add a sheriff rule."""
+    rid = sheriff.add_rule(name, description, action, priority)
+    console.print(f"[green]+[/green] Rule added: [bold]{name}[/bold] ({rid})")
+
+@sheriff_cmd.command()
+@click.argument("rule_id")
+def remove_rule(rule_id):
+    """Remove a sheriff rule."""
+    if sheriff.remove_rule(rule_id):
+        console.print(f"[red]-[/red] Rule {rule_id} removed")
+    else:
+        console.print(f"[red]Rule {rule_id} not found[/red]")
+
+@sheriff_cmd.command()
+@click.argument("rule_id")
+def toggle_rule(rule_id):
+    """Toggle a sheriff rule on/off."""
+    result = sheriff.toggle(rule_id)
+    if result is not None:
+        console.print(f"[cyan]∼[/cyan] Rule {rule_id} toggled to {'ON' if result else 'OFF'}")
+    else:
+        console.print(f"[red]Rule {rule_id} not found[/red]")
+
+@cli.group()
+def session():
+    """Session manager."""
+
+@session.command(name="start")
+@click.argument("label", default="")
+def session_start(label):
+    """Start a new session."""
+    sid = session_manager.start(label)
+    console.print(f"[green]+[/green] Session started: [bold]{label or sid}[/bold] ({sid})")
+
+@session.command()
+@click.argument("session_id")
+def end(session_id):
+    """End a session."""
+    session_manager.end(session_id)
+    console.print(f"[cyan]∼[/cyan] Session {session_id} ended")
+
+@session.command(name="active")
+def session_active():
+    """Show active session."""
+    a = session_manager.active()
+    if a:
+        console.print(Panel(Text.from_markup(f"Active: [bold]{a['label']}[/bold] ({a['id']})\nTasks: {a['tasks']}  Success: {a['rate']}"), box=box.ASCII, border_style="cyan"))
+    else:
+        console.print("[yellow]No active session[/yellow]")
+
+@session.command(name="list")
+def session_list():
+    """List all sessions."""
+    print_header()
+    sessions = session_manager.list_sessions()
+    t = Table(box=box.ASCII, border_style="cyan", title="Sessions")
+    t.add_column("ID"); t.add_column("Label"); t.add_column("Started"); t.add_column("Ended")
+    t.add_column("Tasks"); t.add_column("Success")
+    for s in sessions:
+        t.add_row(s["id"][:12], s["label"], s["started"], s["ended"], str(s["tasks"]), s["success_rate"])
+    console.print(t)
+
+@cli.group()
+def cognitive():
+    """Cognitive controls (incubation, training, patterns)."""
+
+@cognitive.command()
+def status():
+    """Show cognitive engine status."""
+    print_header()
+    hot = incubation.hot_ideas()
+    gs = training.gold_stats()
+    t = Table(box=box.ASCII, border_style="cyan", title="Cognitive Status")
+    t.add_column("Metric", style="bold"); t.add_column("Value")
+    t.add_row("Incubating Ideas", str(len(hot))); t.add_row("Gold Repos", str(gs["total_gold"]))
+    t.add_row("Distillations", str(gs["total_distillations"])); t.add_row("Patterns", str(gs["total_patterns"]))
+    t.add_row("Domains", ", ".join(gs["domains"]) if gs["domains"] else "none")
+    console.print(t)
+
+@cognitive.command()
+@click.argument("idea")
+@click.argument("agent")
+@click.option("--source", "-s", default="")
+@click.option("--tags", "-t", multiple=True)
+def seed(idea, agent, source, tags):
+    """Seed an idea into incubation."""
+    incubation.seed(agent, idea, source, list(tags) if tags else [])
+    console.print(f"[green]+[/green] Idea seeded: [bold]{idea[:60]}[/bold]")
+
+@cognitive.command()
+def hatch():
+    """Hatch incubated ideas."""
+    count = incubation.percolate()
+    hatched = incubation.hatch_one()
+    if hatched:
+        console.print(f"[green]🐣[/green] Hatched: {hatched['idea'][:80]}")
+    elif count:
+        console.print(f"[cyan]{count}[/cyan] ideas percolated, none ready to hatch")
+    else:
+        console.print("[yellow]No ideas ready[/yellow]")
+
+@cognitive.command()
+@click.argument("name")
+@click.argument("content")
+@click.option("--domain", "-d", default="general")
+def add_gold(name, content, domain):
+    """Add a gold repository entry."""
+    gid = training.add_gold(name, content, domain)
+    console.print(f"[green]+[/green] Gold repo added: [bold]{name}[/bold] ({gid})")
+
+@cognitive.command(name="list")
+def gold_list():
+    """List gold repositories."""
+    gold_list_data = training.list_gold()
+    if not gold_list_data:
+        console.print("[yellow]No gold repos[/yellow]"); return
+    t = Table(box=box.ASCII, border_style="gold", title="Gold Repositories")
+    t.add_column("ID"); t.add_column("Name"); t.add_column("Domain"); t.add_column("Content")
+    for g in gold_list_data:
+        t.add_row(g["id"], g["name"], g["domain"], g["content"])
+    console.print(t)
+
+@cognitive.command()
+@click.argument("key")
+@click.argument("pattern")
+def add_pattern(key, pattern):
+    """Store a pattern."""
+    training.store_pattern(key, pattern)
+    console.print(f"[green]+[/green] Pattern stored under [bold]{key}[/bold]")
+
+@cognitive.command()
+@click.argument("key")
+def get_patterns(key):
+    """Get patterns for a key."""
+    pats = training.get_patterns(key)
+    if pats:
+        console.print(f"Patterns for [bold]{key}[/bold]:")
+        for p in pats:
+            console.print(f"  • {p[:80]}")
+    else:
+        console.print(f"[yellow]No patterns for '{key}'[/yellow]")
+
+@cli.group()
+def pbt():
+    """PBT evolution visualizer."""
+
+@pbt.command(name="status")
+def pbt_status():
+    """Show PBT status with population."""
+    print_header()
+    s = pbt_engine.stats()
+    t = Table(box=box.ASCII, border_style="green", title="PBT Evolution")
+    t.add_column("Metric", style="bold"); t.add_column("Value")
+    t.add_row("Generation", str(s["generation"])); t.add_row("Population", str(s["population"]))
+    t.add_row("Best Fitness", f"{s['best_fitness']:.3f}"); t.add_row("Avg Fitness", f"{s['avg_fitness']:.3f}")
+    t.add_row("History", str(s["history_length"]) + " records")
+    console.print(t)
+
+@pbt.command()
+def population():
+    """Show population details."""
+    pop = pbt_engine.population_detail()
+    if not pop:
+        console.print("[yellow]No population[/yellow]"); return
+    t = Table(box=box.ASCII, border_style="cyan", title=f"Population ({len(pop)})")
+    t.add_column("Genome ID", style="bold"); t.add_column("Fitness"); t.add_column("Age")
+    for g in pop:
+        t.add_row(g["id"], f"{g['fitness']:.3f}", str(g["age"]))
+    console.print(t)
+
+@pbt.command()
+def history():
+    """Show fitness history."""
+    fh = pbt_engine.fitness_history()
+    if not fh:
+        console.print("[yellow]No history yet. Run 'maik evolve' first.[/yellow]"); return
+    t = Table(box=box.ASCII, border_style="dim", title="Fitness History")
+    t.add_column("Gen", style="bold"); t.add_column("Best Fitness"); t.add_column("Survivors")
+    for h in fh:
+        t.add_row(str(h["gen"]), f"{h['best']:.3f}", str(h["survivors"]))
+    console.print(t)
+
+@cli.group()
 def permission():
     """Manage permissions."""
 
@@ -687,6 +1090,556 @@ def check(role, action):
     """Check if a role has a permission."""
     allowed = perm_system.check(role, action)
     console.print(f"[bold]{role}[/bold] can[{'not' if not allowed else ''}] [cyan]{action}[/cyan]: {status_tag(allowed, 'allowed', 'denied')}")
+
+# === SESSION COMPACT COMMANDS ===
+@cli.group()
+def session_compact():
+    """Session compaction & archival system."""
+
+@session_compact.command(name="archive")
+@click.argument("session_id")
+@click.option("--label", "-l", default="")
+@click.option("--messages", "-m", default="[]")
+@click.option("--summary", "-s", default="")
+def archive_session(session_id, label, messages, summary):
+    """Archive a session to compacted MD file."""
+    print_header()
+    try:
+        msg_list = json.loads(messages) if messages != "[]" else []
+    except: msg_list = []
+    if not msg_list:
+        console.print("[yellow]No messages provided. Use --messages with JSON array.[/yellow]")
+        return
+    summary_text = summary or summary_generator.generate(msg_list)
+    archived = session_archiver.archive(session_id, label or f"Session {session_id}", msg_list, summary_text)
+    console.print(f"[green]+[/green] Session [bold]{session_id}[/bold] archived")
+    console.print(f"  File: {archived.file_path}")
+    console.print(f"  Messages: {archived.message_count}  Size: {archived.length}b")
+    console.print(f"  Summary: {summary_text[:200]}")
+
+@session_compact.command()
+@click.argument("session_id")
+def summary(session_id):
+    """Get summary of a compacted session."""
+    s = session_archiver.get_summary(session_id)
+    if s:
+        console.print(f"[bold]Session {session_id} Summary:[/bold]\n{s}")
+    else:
+        console.print(f"[red]Session {session_id} not found[/red]")
+
+@session_compact.command()
+@click.argument("query")
+@click.option("--session", "-s", default="", help="Restrict to session ID")
+def search(query, session):
+    """Search compacted session content without loading full file."""
+    print_header()
+    results = session_archiver.search_content(query, session)
+    if not results:
+        console.print(f"[yellow]No matches for '{query}'[/yellow]")
+        return
+    t = Table(box=box.ASCII, border_style="cyan", title=f"Search: '{query}' ({len(results)} matches)")
+    t.add_column("Session", style="bold"); t.add_column("Context")
+    for r in results[:10]:
+        t.add_row(r["session"], r["context"][:100])
+    console.print(t)
+
+@session_compact.command(name="list")
+def session_compact_list():
+    """List all compacted sessions."""
+    all_s = session_archiver.get_all()
+    if not all_s:
+        console.print("[yellow]No compacted sessions yet[/yellow]"); return
+    t = Table(box=box.ASCII, border_style="cyan", title="Compacted Sessions")
+    t.add_column("ID", style="bold"); t.add_column("Label"); t.add_column("Messages"); t.add_column("Summary")
+    for s in all_s:
+        t.add_row(s["id"][:12], s["label"], str(s["messages"]), s["summary"][:60])
+    console.print(t)
+    stats = session_archiver.stats()
+    console.print(f"[dim]Total: {stats['compacted_sessions']} sessions, {stats['total_messages']} messages, {stats['total_size_bytes']} bytes[/dim]")
+
+@session_compact.command()
+@click.option("--max", "-m", default=50, type=int)
+def auto(max):
+    """Auto-compact: check threshold and compact if needed."""
+    compaction_manager._max_messages = max
+    result = compaction_manager.compact()
+    if result:
+        console.print(f"[green]+[/green] Auto-compacted {result['archived_messages']} messages")
+        console.print(f"  File: {result['file']}")
+        console.print(f"  Summary: {result['summary'][:200]}")
+    else:
+        console.print(f"[yellow]Only {len(compaction_manager._pending_messages)} pending, threshold is {max}. Not compacting yet.[/yellow]")
+
+# === FILE ACCESS COMMANDS ===
+@cli.group()
+def file():
+    """File access & management (Claude Code-style)."""
+
+@file.command()
+@click.argument("path")
+@click.option("--offset", "-o", default=0, type=int)
+@click.option("--limit", "-l", default=0, type=int)
+def read(path, offset, limit):
+    """Read a file with optional offset/limit."""
+    print_header()
+    r = file_agent.read_file(path, offset, limit)
+    if "error" in r:
+        console.print(f"[red]{r['error']}[/red]"); return
+    console.print(f"[dim]{r['path']} — {r['lines']} lines ({r['size']} bytes)[/dim]")
+    console.print(Syntax(r['content'], "python", theme="monokai", line_numbers=True) if path.endswith('.py') else r['content'][:5000])
+
+@file.command()
+@click.argument("path")
+@click.option("--chunk-size", "-c", default=200, type=int)
+def toc(path, chunk_size):
+    """Show table of contents for a file (chunked)."""
+    chunks = file_agent.read_file_chunked(path, chunk_size)
+    if not chunks or "error" in chunks[0]:
+        console.print(f"[red]Error reading {path}[/red]"); return
+    t = Table(box=box.ASCII, border_style="cyan", title=f"{path} — {sum(c['count'] for c in chunks)} lines")
+    t.add_column("Start", style="bold"); t.add_column("End"); t.add_column("Lines"); t.add_column("Preview")
+    for c in chunks:
+        t.add_row(str(c['start']), str(c['end']), str(c['count']), c['preview'][:60])
+    console.print(t)
+
+@file.command()
+@click.argument("pattern")
+@click.option("--path", "-p", default=".")
+@click.option("--include", "-i", default="*.py")
+def grep(pattern, path, include):
+    """Search file contents with regex."""
+    print_header()
+    r = file_agent.search(pattern, path, include)
+    if not r["matches"]:
+        console.print(f"[yellow]No matches for '{pattern}'[/yellow]"); return
+    t = Table(box=box.ASCII, border_style="green", title=f"Grep '{pattern}' ({r['matches']} matches)")
+    t.add_column("File", style="bold"); t.add_column("Line"); t.add_column("Content")
+    for res in r["results"][:50]:
+        t.add_row(res["file"], str(res["line"]), res["content"][:100])
+    console.print(t)
+    if r["truncated"]: console.print(f"[dim]... and {r['matches'] - 50} more matches[/dim]")
+
+@file.command()
+@click.argument("pattern")
+def glob_cmd(pattern):
+    """Glob for files matching a pattern."""
+    r = file_agent.glob(pattern)
+    if not r["matches"]:
+        console.print(f"[yellow]No matches for '{pattern}'[/yellow]"); return
+    t = Table(box=box.ASCII, border_style="cyan", title=f"Glob '{pattern}' ({r['matches']} files)")
+    t.add_column("#"); t.add_column("File")
+    for i, f in enumerate(r["files"], 1):
+        t.add_row(str(i), f)
+    console.print(t)
+
+@file.command()
+@click.argument("path")
+def info(path):
+    """Show detailed file/directory info."""
+    r = file_agent.info(path)
+    if "error" in r:
+        console.print(f"[red]{r['error']}[/red]"); return
+    t = Table(box=box.ASCII, border_style="cyan", title=f"Info: {path}")
+    t.add_column("Property", style="bold"); t.add_column("Value")
+    for k, v in r.items():
+        if k in ("contents",): continue
+        t.add_row(k, str(v)[:80])
+    console.print(t)
+    if r.get("type") == "directory" and r.get("contents"):
+        sub = Table(box=box.ASCII, border_style="dim", title="Contents")
+        sub.add_column("Name"); sub.add_column("Type"); sub.add_column("Size")
+        for c in r["contents"][:30]:
+            sub.add_row(c["name"], c["type"], str(c["size"]))
+        console.print(sub)
+
+@file.command()
+@click.argument("path")
+@click.option("--depth", "-d", default=3, type=int)
+def tree(path, depth):
+    """Show directory tree."""
+    r = file_agent.tree(path, depth)
+    if "error" in r:
+        console.print(f"[red]{r['error']}[/red]"); return
+    def render(items, prefix=""):
+        for item in items:
+            marker = "📁" if item["type"] == "dir" else "📄"
+            sz = f" ({item.get('size',0)}b)" if item["type"] == "file" else ""
+            console.print(f"{prefix}{marker} {item['name']}{sz}")
+            if "children" in item:
+                render(item["children"], prefix + "  ")
+    console.print(f"[bold]{r['root']}[/bold]")
+    render(r["tree"])
+
+@file.command()
+@click.argument("path")
+@click.argument("old")
+@click.argument("new")
+def edit(path, old, new):
+    """Edit file by replacing old_string with new_string."""
+    result = file_agent.edit_file(path, old, new)
+    if "error" in result:
+        console.print(f"[red]{result['error']}[/red]")
+    else:
+        console.print(f"[green]+[/green] Edited {path}")
+
+@file.command()
+@click.argument("path")
+def history(path):
+    """Show file access history."""
+    h = file_agent.history()
+    t = Table(box=box.ASCII, border_style="dim", title="File Access History")
+    t.add_column("Action"); t.add_column("Path"); t.add_column("Time")
+    for entry in h[-15:]:
+        t.add_row(entry["action"], entry.get("path","")[:60], time.strftime("%H:%M:%S", time.localtime(entry["time"])))
+    console.print(t)
+
+# === BROWSER AUTOMATION COMMANDS ===
+@cli.group()
+def browse():
+    """Browser automation (screen-reading + pixel-coord)."""
+
+@browse.command()
+@click.argument("url")
+def navigate(url):
+    """Navigate to a URL."""
+    print_header()
+    with console.status(f"[cyan]Navigating to {url}...[/cyan]"):
+        r = browser.navigate(url)
+    if r["status"] == "error":
+        console.print(f"[red]Error: {r.get('error')}[/red]"); return
+    console.print(f"[green]✓[/green] Loaded: [bold]{r.get('title', url)}[/bold]")
+
+@browse.command(name="screenshot")
+def browse_screenshot():
+    """Take a screenshot of current page."""
+    b64 = browser.screenshot()
+    if b64:
+        console.print(f"[green]✓[/green] Screenshot taken (base64: {len(b64)} bytes)")
+    else:
+        console.print("[red]Screenshot failed[/red]")
+
+@browse.command()
+@click.option("--selector", "-s", default="", help="CSS selector to click")
+@click.option("--x", type=int, default=0, help="X coordinate")
+@click.option("--y", type=int, default=0, help="Y coordinate")
+@click.option("--coords", is_flag=True, help="Use pixel coordinates")
+def browse_click(selector, x, y, coords):
+    """Click element by selector or pixel coordinates."""
+    r = browser.click(selector, x, y, coords)
+    if r["success"]:
+        console.print(f"[green]✓[/green] Clicked {r['clicked']}")
+    else:
+        console.print(f"[red]Click failed: {r.get('error')}[/red]")
+
+@browse.command()
+@click.argument("text")
+@click.option("--selector", "-s", default="", help="CSS selector")
+def browse_type(text, selector):
+    """Type text into an element."""
+    r = browser.type(selector, text) if selector else browser.type(x=500, y=400, text=text, use_coords=True)
+    if r["success"]: console.print(f"[green]✓[/green] Typed '{r['typed']}'")
+    else: console.print(f"[red]{r.get('error')}[/red]")
+
+@browse.command()
+def state():
+    """Show interactive elements on page."""
+    s = browser.get_state()
+    if "error" in s:
+        console.print(f"[red]{s['error']}[/red]"); return
+    t = Table(box=box.ASCII, border_style="cyan", title=f"Interactive Elements ({s['count']})")
+    t.add_column("Tag"); t.add_column("Text"); t.add_column("Position"); t.add_column("Center")
+    for el in s["elements"][:30]:
+        pos = f"{el['x']},{el['y']}"
+        center = f"{el['center_x']},{el['center_y']}"
+        t.add_row(el["tag"], el["text"][:40], pos, center)
+    console.print(t)
+    if s['count'] > 30: console.print(f"[dim]... and {s['count'] - 30} more elements[/dim]")
+
+@browse.command()
+@click.argument("text")
+def find(text):
+    """Find and click element by text."""
+    r = screen_reader.click_text(text)
+    if r.get("found", True):
+        console.print(f"[green]✓[/green] Clicked '{text}'")
+    else:
+        console.print(f"[red]{r.get('error')}[/red]")
+
+@browse.command()
+@click.argument("script")
+def js(script):
+    """Run JavaScript in the browser."""
+    r = browser.evaluate(script)
+    console.print(r.get("result", r.get("error", "?"))[:2000])
+
+@browse.command()
+def extract():
+    """Extract visible text from current page."""
+    r = browser.extract_text()
+    console.print(r.get("text", r.get("error", "?"))[:5000])
+
+@browse.command()
+def links():
+    """Extract all links from page."""
+    links = browser.extract_links()
+    if not links:
+        console.print("[yellow]No links found[/yellow]"); return
+    t = Table(box=box.ASCII, border_style="cyan", title=f"Links ({len(links)})")
+    t.add_column("Text", style="bold"); t.add_column("URL")
+    for l in links[:20]:
+        t.add_row(l.get("text","")[:60], l.get("href","")[:80])
+    console.print(t)
+
+@browse.command()
+def close():
+    """Close the browser."""
+    browser.close()
+    console.print("[red]Browser closed[/red]")
+
+# === COMPUTER USE COMMANDS ===
+@cli.group()
+def computer_use():
+    """Desktop automation: mouse, keyboard, windows."""
+
+@computer_use.command()
+@click.argument("x", type=int)
+@click.argument("y", type=int)
+def move(x, y):
+    """Move mouse to coordinates."""
+    r = computer.move_mouse(x, y)
+    console.print(f"[green]✓[/green] Mouse moved to ({x}, {y})")
+
+@computer_use.command()
+@click.argument("x", type=int)
+@click.argument("y", type=int)
+@click.option("--button", "-b", default="left")
+def cu_click(x, y, button):
+    """Click at coordinates."""
+    computer.click(x, y, button)
+    console.print(f"[green]✓[/green] {button}-clicked ({x}, {y})")
+
+@computer_use.command()
+@click.argument("text")
+@click.option("--interval", "-i", default=0.05, type=float)
+def cu_type(text, interval):
+    """Type text at human speed."""
+    r = computer.type_text(text, interval)
+    console.print(f"[green]✓[/green] Typed {r['length']} chars: '{r['typed']}'")
+
+@computer_use.command()
+@click.argument("key")
+def press(key):
+    """Press a keyboard key."""
+    computer.press_key(key)
+    console.print(f"[green]✓[/green] Pressed '{key}'")
+
+@computer_use.command()
+@click.argument("keys", nargs=-1, required=True)
+def hotkey(keys):
+    """Press a key combination. Usage: hotkey ctrl c"""
+    computer.hotkey(*keys)
+    console.print(f"[green]✓[/green] Hotkey: {'+'.join(keys)}")
+
+@computer_use.command()
+@click.argument("app")
+def open(app):
+    """Open an application (Win+R)."""
+    computer.open_app(app)
+    console.print(f"[green]✓[/green] Launched '{app}'")
+
+@computer_use.command()
+def screenshot():
+    """Take desktop screenshot."""
+    b64 = computer.screenshot()
+    console.print(f"[green]✓[/green] Desktop screenshot taken ({len(b64)} bytes)")
+
+@computer_use.command()
+def windows():
+    """List open windows."""
+    wins = computer.list_windows()
+    if not wins:
+        console.print("[yellow]No windows found[/yellow]"); return
+    t = Table(box=box.ASCII, border_style="cyan", title=f"Open Windows ({len(wins)})")
+    t.add_column("Window", style="bold"); t.add_column("Visible")
+    for w in wins:
+        t.add_row(w.get("title","")[:80], str(w.get("visible","?")))
+    console.print(t)
+
+@computer_use.command()
+@click.argument("title")
+def focus(title):
+    """Focus a window by title substring."""
+    r = computer.focus_window(title)
+    if "error" in r:
+        console.print(f"[red]{r['error']}[/red]")
+    else:
+        console.print(f"[green]✓[/green] Focused: {r['window']}")
+
+@computer_use.command()
+def position():
+    """Show current mouse position."""
+    p = computer.get_position()
+    console.print(f"Mouse position: ({p['x']}, {p['y']})")
+
+@computer_use.command()
+@click.option("--speed", "-s", default=0.5, type=float)
+def speed(speed):
+    """Set automation speed: 0=instant, 0.5=normal, 1=slow."""
+    computer.set_speed(speed)
+    console.print(f"[cyan]Speed set to {speed}[/cyan]")
+
+@computer_use.command()
+def demo():
+    """Demo: open notepad and type a message."""
+    with console.status("[cyan]Opening notepad...[/cyan]"):
+        computer.open_notepad()
+    console.print("[green]✓[/green] Notepad opened and text typed!")
+
+# === CODE ANALYSIS COMMANDS ===
+@cli.group()
+def code():
+    """Code analysis: AST, deps, complexity, refactoring."""
+
+@code.command()
+@click.argument("path")
+def analyze(path):
+    """Analyze a Python file or project."""
+    print_header()
+    if path.endswith('.py'):
+        r = analyzer.analyze_file(path)
+        if "error" in r: console.print(f"[red]{r['error']}[/red]"); return
+        console.print(f"[bold]{r['file']}[/bold] — {r['lines']} lines, {len(r['functions'])} functions, {len(r['classes'])} classes")
+        console.print(f"  Complexity: {r['complexity']['total']} (avg {r['complexity']['avg']:.1f})")
+        console.print(f"  Imports: {len(r['imports'])}  Dependencies: {len(r['dependencies'])}")
+        console.print(f"  Code: {r['metrics']['code_lines']}  Comments: {r['metrics']['comment_lines']}  Blanks: {r['metrics']['blank_lines']}")
+        if r['functions']:
+            t = Table(box=box.ASCII, border_style="cyan", title="Functions")
+            t.add_column("Name"); t.add_column("Args"); t.add_column("Complexity"); t.add_column("Line")
+            for f in r['functions']:
+                t.add_row(f['name'], str(f['arg_count']), str(f['complexity']), str(f['line']))
+            console.print(t)
+    else:
+        with console.status("[cyan]Analyzing project...[/cyan]"):
+            r = analyzer.analyze_project(path)
+        console.print(f"[bold]Project Analysis[/bold] — {r['files']} files, {r['lines']} lines")
+        console.print(f"  Functions: {r['functions']}  Classes: {r['classes']}  Complexity: {r['complexity']}")
+        if r['top_dependencies']:
+            t = Table(box=box.ASCII, border_style="cyan", title="Top Dependencies")
+            t.add_column("Package", style="bold"); t.add_column("Used By")
+            for dep, count in r['top_dependencies'][:15]:
+                t.add_row(dep, str(count))
+            console.print(t)
+
+@code.command()
+@click.argument("name")
+@click.option("--path", "-p", default=".")
+def refs(name, path):
+    """Find all references to a symbol."""
+    r = analyzer.find_references(name, path)
+    if not r:
+        console.print(f"[yellow]No references to '{name}'[/yellow]"); return
+    t = Table(box=box.ASCII, border_style="cyan", title=f"References to '{name}' ({len(r)})")
+    t.add_column("File", style="bold"); t.add_column("Line"); t.add_column("Content")
+    for ref in r[:30]:
+        t.add_row(ref['file'], str(ref['line']), ref['content'][:100])
+    console.print(t)
+
+@code.command()
+@click.argument("path")
+def suggestions(path):
+    """Get refactoring suggestions."""
+    r = analyzer.refactor_suggestions(path)
+    if not r: console.print("[green]No suggestions — code looks clean![/green]"); return
+    t = Table(box=box.ASCII, border_style="yellow", title=f"Refactoring Suggestions ({len(r)})")
+    t.add_column("Type", style="bold"); t.add_column("Item"); t.add_column("Detail"); t.add_column("Line")
+    for s in r:
+        name = s.get('function') or s.get('class','')
+        val = s.get('args') or s.get('complexity') or s.get('methods','')
+        t.add_row(s['type'], name, str(val), str(s['line']))
+    console.print(t)
+
+@code.command()
+@click.argument("pattern")
+@click.option("--path", "-p", default=".")
+def search(pattern, path):
+    """Search code with regex."""
+    r = analyzer.search_code(pattern, path)
+    if not r['matches']:
+        console.print(f"[yellow]No matches[/yellow]"); return
+    t = Table(box=box.ASCII, border_style="cyan", title=f"Code Search '{pattern}' ({r['matches']} matches)")
+    t.add_column("File"); t.add_column("Line"); t.add_column("Content")
+    for res in r['results'][:40]:
+        t.add_row(res['file'], str(res['line']), res['content'][:100])
+    console.print(t)
+
+# === WEB RESEARCH COMMANDS ===
+@cli.group()
+def research():
+    """Web research: search, fetch, synthesize."""
+
+@research.command()
+@click.argument("query")
+@click.option("--num", "-n", default=5, type=int)
+def search(query, num):
+    """Search the web."""
+    print_header()
+    with console.status(f"[cyan]Searching for '{query}'...[/cyan]"):
+        r = researcher.search(query, num)
+    if not r['results']:
+        console.print("[yellow]No results[/yellow]"); return
+    t = Table(box=box.ASCII, border_style="cyan", title=f"Search: '{query}' ({r['total']} results)")
+    t.add_column("#"); t.add_column("Title", style="bold"); t.add_column("Snippet")
+    for i, res in enumerate(r['results'], 1):
+        t.add_row(str(i), res['title'][:60], res.get('snippet','')[:100])
+    console.print(t)
+
+@research.command()
+@click.argument("url")
+def fetch(url):
+    """Fetch and extract content from a URL."""
+    print_header()
+    with console.status(f"[cyan]Fetching {url}...[/cyan]"):
+        r = researcher.fetch_page(url)
+    if "error" in r:
+        console.print(f"[red]{r['error']}[/red]"); return
+    console.print(f"[bold]{r.get('title', url)}[/bold]")
+    console.print(f"[dim]Content: {r.get('length',0)} bytes[/dim]")
+    console.print(r.get('content','')[:5000])
+    if r.get('links'):
+        console.print(f"[dim]Links: {len(r['links'])} found[/dim]")
+
+@research.command()
+@click.argument("topic")
+@click.option("--depth", "-d", default=2, type=int)
+@click.option("--pages", "-p", default=5, type=int)
+def deep(topic, depth, pages):
+    """Deep research: search, fetch, analyze, synthesize."""
+    print_header()
+    with console.status(f"[cyan]Researching '{topic}' (depth={depth}, pages={pages})...[/cyan]"):
+        r = researcher.research(topic, depth, pages)
+    console.print(f"[bold]Research: {r['topic']}[/bold]")
+    console.print(f"Pages fetched: {r['pages_fetched']}")
+    console.print(f"Synthesis: {r['synthesis']['summary']}")
+    console.print(f"Report: memory/research/research_{r['id']}.json")
+    if r['synthesis'].get('sections'):
+        t = Table(box=box.ASCII, border_style="cyan", title="Key Topics")
+        t.add_column("Topic", style="bold"); t.add_column("Sources")
+        for sec in r['synthesis']['sections'][:10]:
+            t.add_row(sec['topic'], str(sec['mentioned_in']))
+        console.print(t)
+
+@research.command()
+@click.argument("question")
+def ask(question):
+    """Ask a question and get web-researched answer."""
+    print_header()
+    with console.status(f"[cyan]Researching '{question}'...[/cyan]"):
+        r = researcher.ask(question)
+    console.print(f"[bold]Question:[/bold] {r['question']}")
+    console.print(f"[bold]Answer:[/bold] {r['synthesis']['summary']}")
+    console.print(f"[dim]Sources ({r['pages_consulted']}):[/dim]")
+    for src in r['sources'][:5]:
+        console.print(f"  • {src}")
 
 # === INTERACTIVE MODE ===
 @cli.command()
@@ -757,7 +1710,7 @@ def interactive(ctx):
                 for a in board:
                     console.print(f"  [cyan]{a['id']:<16}[/cyan] ELO: {a['elo']:<6} {a['success_rate']:.0%} ({a['status']})")
             elif sub == "evolve":
-                gen = pbt.evolve()
+                gen = pbt_engine.evolve()
                 console.print(f"[green]Generation {gen}[/green]")
             elif sub in ("memory", "mem"):
                 l1r = l1_memory.recall(rest or "general")
@@ -789,6 +1742,400 @@ def interactive(ctx):
                 result = execute(line, "", budget)
             console.print(Panel(Markdown(result['solution'][:2000]), box=box.ASCII, border_style="green"))
             learn(line, result['solution'][:500], "success", result['agents_used'], result['confidence'], 0, 0)
+
+# === PIXEL VISION COMMANDS ===
+@cli.group()
+def vision():
+    """Pixel-level screen perception."""
+
+@vision.command()
+@click.argument("image_path", required=False, default="")
+def analyze(image_path):
+    """Describe a screen or analyze elements."""
+    from pixel_vision import PixelVision
+    pv = PixelVision()
+    with console.status("[cyan]Analyzing...[/cyan]"):
+        if image_path:
+            result = pv.detect_elements(image_path)
+        else:
+            result = pv.describe_screen()
+    if isinstance(result, dict):
+        for k, v in result.items():
+            if isinstance(v, list):
+                console.print(f"[bold]{k}:[/bold] {len(v)} items")
+                for item in v[:5]:
+                    if isinstance(item, dict):
+                        console.print(f"  {str(item)[:100]}")
+                    else:
+                        console.print(f"  {str(item)[:80]}")
+            else:
+                console.print(f"[bold]{k}:[/bold] {str(v)[:80]}")
+    elif isinstance(result, str):
+        console.print(result[:2000])
+
+@vision.command()
+def capabilities():
+    """Check available vision libraries."""
+    from pixel_vision import PixelVision
+    pv = PixelVision()
+    avail = []
+    not_avail = []
+    for method in ['describe_screen','detect_elements','detect_color_palette','detect_layout_grid','find_all_icons','screenshot_b64']:
+        if hasattr(pv, method) and callable(getattr(pv, method)):
+            avail.append(method)
+        else:
+            not_avail.append(method)
+    console.print("[bold]Available methods:[/bold]")
+    for m in avail:
+        console.print(f"  [green]Y[/green] {m}")
+    for m in not_avail:
+        console.print(f"  [red]N[/red] {m}")
+
+# === API ROUTER COMMANDS ===
+@cli.group()
+def apirouter():
+    """Multi-API intelligent router."""
+
+@apirouter.command()
+@click.argument("prompt_text")
+def aroute(prompt_text):
+    """Route a task to the best API provider."""
+    with console.status("[cyan]Classifying task...[/cyan]"):
+        result = api_router.route(prompt_text)
+    console.print(f"[bold]Capability:[/bold] {result.get('capability','?')}")
+    console.print(f"[bold]Provider:[/bold] {result.get('provider','?')}")
+    console.print(f"[bold]Model:[/bold] {result.get('model','?')}")
+    console.print(f"[bold]Priority:[/bold] {result.get('priority','?')}")
+    if result.get('fallback_chain'):
+        console.print(f"[bold]Fallback chain:[/bold] {result['fallback_chain']}")
+    if result.get('error'):
+        console.print(f"[red]Error: {result['error']}[/red]")
+
+@apirouter.command()
+def astats():
+    """Show router usage statistics."""
+    s = api_router.stats()
+    console.print(f"Total calls: {s.get('total_calls',0)}")
+    console.print(f"Total tokens: {s.get('total_tokens',0)}")
+    console.print(f"History size: {s.get('history_size',0)}")
+    console.print(f"Providers: {s.get('providers',[])}")
+    console.print(f"Enabled: {s.get('enabled',False)}")
+    console.print(f"API keys set: {s.get('api_keys_set',0)}")
+
+@apirouter.command()
+def providers():
+    """List available API providers."""
+    for p in api_router.list_providers():
+        name = p.name if hasattr(p,'name') else str(p)
+        url = p.base_url if hasattr(p,'base_url') else ''
+        console.print(f"  {name} ({url})")
+
+@apirouter.command()
+def history():
+    """Show routing history."""
+    h = api_router.history()
+    if not h:
+        console.print("[yellow]No history[/yellow]"); return
+    for item in h[-10:]:
+        if isinstance(item, dict):
+            console.print(f"  {str(item.get('time',''))[:19]} {str(item.get('task',''))[:40]} -> {item.get('provider','?')}")
+        else:
+            console.print(f"  {str(item)[:80]}")
+
+# === CLI PLUGIN COMMANDS ===
+@cli.group()
+def plugins():
+    """Manage CLI tool integrations."""
+
+@plugins.command()
+def plist():
+    """List all available CLI plugins."""
+    plug_list = cli_plugins.list_plugins()
+    t = Table(box=box.ASCII, title="CLI Plugins")
+    t.add_column("Plugin"); t.add_column("Installed"); t.add_column("Category"); t.add_column("Description")
+    for p in plug_list:
+        inst = "[green]Y[/green]" if p.get('installed') else "[red]N[/red]"
+        t.add_row(p.get('name',''), inst, p.get('category',''), p.get('description','')[:60])
+    console.print(t)
+
+@plugins.command()
+@click.argument("plugin_name")
+@click.argument("args", nargs=-1)
+def run(plugin_name, args):
+    """Run a CLI plugin with arguments."""
+    found = [p for p in cli_plugins.list_plugins() if p['name'] == plugin_name]
+    if not found:
+        console.print(f"[red]Unknown plugin: {plugin_name}[/red]"); return
+    cmd = ' '.join(args)
+    with console.status(f"[cyan]Running {plugin_name} {cmd}...[/cyan]"):
+        result = cli_plugins.run(plugin_name, args=cmd)
+    if result.get('success'):
+        console.print(result.get('stdout','')[:5000] or "(no output)")
+    else:
+        console.print(f"[red]Error: {result.get('error','Unknown')}[/red]")
+        console.print(result.get('stderr','')[:2000] if result.get('stderr') else "")
+
+@plugins.command()
+def pdetect():
+    """Show which CLI tools are installed."""
+    plug_list = cli_plugins.list_plugins()
+    t = Table(box=box.ASCII, title="Detection Results")
+    t.add_column("Plugin"); t.add_column("Available")
+    for p in sorted(plug_list, key=lambda x: x['name']):
+        avail = "[green]Y[/green]" if p.get('installed') else "[red]N[/red]"
+        t.add_row(p['name'], avail)
+    console.print(t)
+
+@plugins.command()
+def pcategories():
+    """Show plugins grouped by category."""
+    cats = cli_plugins.installed_by_category()
+    t = Table(box=box.ASCII, title="Plugins by Category")
+    t.add_column("Category"); t.add_column("Plugins")
+    for cat, plugs in sorted(cats.items()):
+        names = [p['name'] if isinstance(p, dict) else str(p) for p in plugs]
+        t.add_row(cat, ', '.join(names))
+    console.print(t)
+
+# === GITHUB COMMANDS ===
+@cli.group()
+def gh():
+    """GitHub integration."""
+
+@gh.command()
+def gstatus():
+    """Check GitHub connection status."""
+    auth_status = github.is_authenticated
+    has_tok = github.has_token
+    console.print(f"Authenticated: {status_tag(auth_status,'Yes','No')}")
+    console.print(f"Has token: {status_tag(has_tok,'Yes','No')}")
+    if auth_status:
+        try:
+            user = github.get_user()
+            if isinstance(user, dict):
+                console.print(f"User: {user.get('login','?')} ({user.get('name','?')})")
+        except Exception:
+            pass
+
+@gh.command()
+@click.argument("query")
+@click.option("--limit", "-l", default=5, type=int)
+def repos(query, limit):
+    """Search GitHub repositories."""
+    with console.status(f"[cyan]Searching repos: '{query}'...[/cyan]"):
+        r = github.search_repos(query, limit)
+    if not r:
+        console.print("[yellow]No results[/yellow]"); return
+    t = Table(box=box.ASCII, title=f"GitHub Repos: '{query}'")
+    t.add_column("Name"); t.add_column("Stars"); t.add_column("Language"); t.add_column("Description")
+    for repo in r:
+        t.add_row(repo.get('name',''), str(repo.get('stars',0)), repo.get('language','') or '', (repo.get('description','') or '')[:60])
+    console.print(t)
+
+@gh.command()
+@click.argument("owner_repo")
+@click.option("--state", default="open")
+def issues(owner_repo, state):
+    """List issues for a repo."""
+    parts = owner_repo.split('/')
+    if len(parts) != 2:
+        console.print("[red]Use format: owner/repo[/red]"); return
+    with console.status(f"[cyan]Fetching issues for {owner_repo}...[/cyan]"):
+        r = github.list_issues(parts[0], parts[1], state)
+    t = Table(box=box.ASCII, title=f"Issues: {owner_repo}")
+    t.add_column("#"); t.add_column("Title"); t.add_column("State"); t.add_column("Author")
+    for i in r:
+        num = i.get('number',i.get('id','?'))
+        title = i.get('title','')[:60]
+        state_v = i.get('state','')
+        author = i.get('user',{}).get('login','') if isinstance(i.get('user'),dict) else str(i.get('user',''))
+        t.add_row(str(num), title, state_v, author)
+    console.print(t)
+
+@gh.command()
+@click.argument("owner_repo")
+@click.argument("path")
+def gfile(owner_repo, path):
+    """Get file content from a repo."""
+    parts = owner_repo.split('/')
+    if len(parts) != 2:
+        console.print("[red]Use format: owner/repo[/red]"); return
+    with console.status(f"[cyan]Fetching {path} from {owner_repo}...[/cyan]"):
+        r = github.get_file_content(parts[0], parts[1], path)
+    if r:
+        console.print(Syntax(r[:5000], "python" if path.endswith('.py') else "text", theme="monokai"))
+    else:
+        console.print(f"[red]File not found or no access[/red]")
+
+@gh.command()
+@click.argument("query")
+@click.option("--limit", "-l", default=5, type=int)
+def codesearch(query, limit):
+    """Search GitHub code."""
+    with console.status(f"[cyan]Searching code: '{query}'...[/cyan]"):
+        r = github.search_code(query, limit)
+    if not r:
+        console.print("[yellow]No results[/yellow]"); return
+    t = Table(box=box.ASCII, title=f"Code: '{query}'")
+    t.add_column("Repo"); t.add_column("Path")
+    for item in r:
+        repo_name = item.get('repository',item.get('repo',''))
+        if isinstance(repo_name, dict):
+            repo_name = repo_name.get('full_name','')
+        t.add_row(str(repo_name)[:40], item.get('path',''))
+    console.print(t)
+
+# === AUTH COMMANDS ===
+@cli.group()
+def creds():
+    """Manage encrypted credentials."""
+
+@creds.command()
+@click.argument("service")
+@click.argument("key")
+def set(service, key):
+    """Set an API key for a service."""
+    auth.set_api_key(service, key)
+    console.print(f"[green]Key for '{service}' saved[/green]")
+
+@creds.command()
+@click.argument("service")
+def get(service):
+    """Get an API key (shows only first/last 4 chars)."""
+    v = auth.get_api_key(service)
+    if v:
+        console.print(f"[bold]{service}:[/bold] {v[:4]}...{v[-4:]}")
+    else:
+        console.print(f"[yellow]Key for '{service}' not found[/yellow]")
+
+@creds.command()
+@click.argument("service")
+def remove(service):
+    """Remove a credential."""
+    auth.remove_api_key(service)
+    console.print(f"[green]Key for '{service}' removed[/green]")
+
+@creds.command()
+@click.argument("service")
+def rotate(service):
+    """Rotate an API key."""
+    new_key = auth.rotate_api_key(service)
+    if new_key:
+        console.print(f"[green]Key for '{service}' rotated: {new_key[:8]}...[/green]")
+    else:
+        console.print(f"[red]No key exists for '{service}' to rotate[/red]")
+
+@creds.command()
+def clist():
+    """List all stored service credentials."""
+    services = auth.list_services()
+    if not services:
+        console.print("[yellow]No credentials stored[/yellow]"); return
+    t = Table(box=box.ASCII, title="Credentials")
+    t.add_column("Service"); t.add_column("Has Key")
+    for s in services:
+        has = auth.has_key(s) if hasattr(auth,'has_key') else auth.get_api_key(s) is not None
+        t.add_row(s, status_tag(has,'Yes','No'))
+    console.print(t)
+
+@creds.command()
+def cstatus():
+    """Show auth system status."""
+    s = auth.status()
+    for k, v in s.items():
+        if isinstance(v, bool):
+            console.print(f"{k}: {status_tag(v,'Yes','No')}")
+        else:
+            console.print(f"{k}: {v}")
+
+# === AGENT TREE COMMANDS ===
+@cli.group()
+def tree():
+    """18-agent hierarchical tree management."""
+
+@tree.command()
+def show():
+    """Display the agent tree."""
+    tree_data = agent_tree.get_tree_structure()
+    console.print(agent_tree.agent_summary())
+
+@tree.command()
+def mindmap():
+    """Show mind-map style agent tree."""
+    tree_data = agent_tree.get_tree_structure()
+    mm = render_mind_map_json(tree_data)
+    console.print_json(mm)
+
+@tree.command()
+@click.argument("task")
+def delegate(task):
+    """Delegate a task through the agent tree."""
+    with console.status(f"[cyan]Delegating task...[/cyan]"):
+        result = agent_tree.delegate(task)
+    console.print(f"[bold]Delegated to:[/bold] {result.get('delegated_to','?')}")
+    console.print(f"[bold]Path:[/bold] {' -> '.join(result.get('path',[]))}")
+    console.print(f"[bold]ID:[/bold] {result.get('id','?')}")
+
+@tree.command()
+def astats():
+    """Show agent tree statistics."""
+    s = agent_tree.stats()
+    for k, v in s.items():
+        console.print(f"{k}: {v}")
+
+@tree.command()
+def tlist():
+    """List all agents with their status."""
+    agents = agent_tree.list_agents()
+    t = Table(box=box.ASCII, title=f"All Agents ({len(agents)})")
+    t.add_column("ID"); t.add_column("Name"); t.add_column("Role"); t.add_column("Status")
+    for a in agents:
+        t.add_row(a.get('id',''), a.get('name',''), a.get('role',''), str(a.get('status','')))
+    console.print(t)
+
+@tree.command()
+def broadcast():
+    """Broadcast status to all agents."""
+    agent_tree.broadcast_event("cli_status_check", {"source": "cli"})
+    console.print("[green]Broadcast sent to all agents[/green]")
+
+# === UNIFIED VISION COMMANDS ===
+@cli.group()
+def uvision():
+    """Unified browser+desktop vision."""
+
+@uvision.command()
+def ustatus():
+    """Check unified vision status."""
+    console.print("[bold]Unified Vision[/bold]")
+    console.print(f"describe_screen: {'[green]available[/green]' if hasattr(unified_vision,'describe_screen') else '[red]N/A[/red]'}")
+    console.print(f"detect_elements: {'[green]available[/green]' if hasattr(unified_vision,'detect_elements') else '[red]N/A[/red]'}")
+    console.print(f"detect_ui_changes: {'[green]available[/green]' if hasattr(unified_vision,'detect_ui_changes') else '[red]N/A[/red]'}")
+
+@uvision.command()
+def capture():
+    """Capture unified viewport snapshot."""
+    with console.status("[cyan]Capturing...[/cyan]"):
+        try:
+            result = unified_vision.describe_screen()
+            console.print(str(result)[:2000])
+        except Exception as e:
+            console.print(f"[red]Capture failed: {e}[/red]")
+
+@uvision.command()
+def diff():
+    """Detect UI changes since last capture."""
+    with console.status("[cyan]Detecting changes...[/cyan]"):
+        try:
+            changes = unified_vision.detect_ui_changes()
+            if isinstance(changes, list):
+                console.print(f"[bold]Changes detected:[/bold] {len(changes)}")
+                for c in changes[:10]:
+                    console.print(f"  {str(c)[:100]}")
+            else:
+                console.print(str(changes)[:1000])
+        except Exception as e:
+            console.print(f"[red]Change detection failed: {e}[/red]")
 
 if __name__ == "__main__":
     cli()

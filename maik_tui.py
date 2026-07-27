@@ -28,6 +28,15 @@ from safety_engine import stop_light
 from boolean_engine import voter
 from meta_controller import prompt_selector, workflow_engine, PROMPT_TEMPLATES
 from corporate_engine import org_chart, agent_tracker, corp_library
+from governance_engine import voting_engine, logic_probe, sentinel, sheriff, session_manager, cognitive_controls, pbt_tracker, training
+from pixel_vision import pixel_vision
+from api_router import router as api_router
+from cli_plugin import cli_plugins
+from github_integration import github
+from auth_manager import auth
+from agent_tree import agent_tree, AgentStatus
+from mindmap_ui import render_mind_map_json, render_tree_text
+from unified_vision import unified_vision
 
 class AskTab(Static):
     def compose(self):
@@ -134,113 +143,123 @@ class CouncilTab(Static):
             out.write(tree)
 
 class OrgTab(Static):
-    def on_mount(self): self.refresh()
+    def on_mount(self):
+        self.refresh()
+
     def compose(self):
         yield Static("[bold cyan]Org Chart Manager[/bold cyan]", id="org-title")
-        yield Input(placeholder="CEO ID (for add ops)", id="org-ceo-input")
-        yield Horizontal(
-            Button("Add CEO", id="org-add-ceo", variant="primary"),
-            Button("Add Manager", id="org-add-mgr"),
-            Button("Add Employee", id="org-add-emp"),
-        )
-        yield RichLog(id="org-output", highlight=True, markup=True)
+        with Horizontal():
+            yield Button("Refresh", id="org-ref", variant="primary")
+            yield Button("Add CEO", id="org-add-ceo")
+            yield Button("+ Sub-Agent", id="org-add-child")
+            yield Button("- Remove", id="org-remove")
+            yield Button("Details", id="org-detail")
+        yield Static(id="org-cnt")
+        with Horizontal():
+            yield RichLog(id="org-out", highlight=True, markup=True)
+            yield RichLog(id="org-det", highlight=True, markup=True)
 
-    def on_button_pressed(self, event: Button.Pressed):
-        inp = self.query_one("#org-ceo-input", Input)
-        ceo_id = inp.value or ""
-        if event.button.id == "org-add-ceo":
-            self.add_ceo_dialog()
-        elif event.button.id == "org-add-mgr":
-            self.add_mgr_dialog(ceo_id)
-        elif event.button.id == "org-add-emp":
-            self.add_emp_dialog(ceo_id)
+    def on_button_pressed(self, e):
+        b = e.button.id
+        if b == "org-ref": self.refresh()
+        elif b == "org-add-ceo": self.ceo_dlg()
+        elif b == "org-add-child": self.child_dlg()
+        elif b == "org-remove": self.rm_dlg()
+        elif b == "org-detail": self.det_dlg()
 
-    def add_ceo_dialog(self):
+    def ceo_dlg(self):
         from textual.screen import ModalScreen
-        class AddCEOScreen(ModalScreen):
+        class S(ModalScreen):
             def compose(self):
                 yield Vertical(
                     Static("[bold]Add CEO[/bold]"),
-                    Input(placeholder="CEO ID (e.g., ceo-new)", id="ceo-id"),
-                    Input(placeholder="CEO Name", id="ceo-name"),
-                    Horizontal(Button("Add", id="add"), Button("Cancel", id="cancel")),
+                    Input(placeholder="CEO ID", id="cid"),
+                    Input(placeholder="CEO Name", id="cnm"),
+                    Horizontal(Button("Add",id="add"), Button("Cancel",id="cancel")),
                 )
-            def on_button_pressed(self, event):
-                if event.button.id == "add":
-                    cid = self.query_one("#ceo-id", Input).value
-                    nm = self.query_one("#ceo-name", Input).value
-                    if cid and nm:
-                        org_chart.add_ceo(cid, nm)
-                        council.add_ceo(nm, ["general"])
+            def on_button_pressed(self, e):
+                if e.button.id == "add":
+                    a=self.query_one("#cid",Input).value; b=self.query_one("#cnm",Input).value
+                    if a and b: org_chart.add_ceo(a,b); council.add_ceo(b,["general"])
                 self.app.pop_screen()
-        self.app.push_screen(AddCEOScreen())
-        self.refresh_later()
+        self.app.push_screen(S()); self.ref_later()
 
-    def add_mgr_dialog(self, ceo_id):
+    def child_dlg(self):
         from textual.screen import ModalScreen
-        class AddMgrScreen(ModalScreen):
+        class S(ModalScreen):
             def compose(self):
                 yield Vertical(
-                    Static(f"[bold]Add Manager under {ceo_id or '?'}[/bold]"),
-                    Input(placeholder="Manager ID", id="mgr-id"),
-                    Input(placeholder="Manager Name", id="mgr-name"),
-                    Horizontal(Button("Add", id="add"), Button("Cancel", id="cancel")),
+                    Static("[bold]Add Sub-Agent[/bold]"),
+                    Input(placeholder="Parent ID", id="pid"),
+                    Input(placeholder="Sub-Agent ID", id="cid"),
+                    Input(placeholder="Sub-Agent Name", id="cnm"),
+                    Input(placeholder="Type (default: agent)", id="cty"),
+                    Horizontal(Button("Add",id="add"), Button("Cancel",id="cancel")),
                 )
-            def on_button_pressed(self, event):
-                if event.button.id == "add" and ceo_id:
-                    mid = self.query_one("#mgr-id", Input).value
-                    nm = self.query_one("#mgr-name", Input).value
-                    if mid and nm:
-                        org_chart.add_manager(ceo_id, mid, nm)
-                        agent_tracker.register(mid, "manager")
+            def on_button_pressed(self, e):
+                if e.button.id == "add":
+                    p=self.query_one("#pid",Input).value; a=self.query_one("#cid",Input).value
+                    b=self.query_one("#cnm",Input).value; t=self.query_one("#cty",Input).value or "agent"
+                    if p and a and b: org_chart.add_child(p,a,b,t)
                 self.app.pop_screen()
-        self.app.push_screen(AddMgrScreen())
-        self.refresh_later()
+        self.app.push_screen(S()); self.ref_later()
 
-    def add_emp_dialog(self, ceo_id):
+    def rm_dlg(self):
         from textual.screen import ModalScreen
-        class AddEmpScreen(ModalScreen):
+        class S(ModalScreen):
             def compose(self):
                 yield Vertical(
-                    Static(f"[bold]Add Employee under {ceo_id or '?'}[/bold]"),
-                    Input(placeholder="Manager ID", id="emp-mgr"),
-                    Input(placeholder="Employee ID", id="emp-id"),
-                    Input(placeholder="Employee Name", id="emp-name"),
-                    Input(placeholder="Role (default: employee)", id="emp-role"),
-                    Horizontal(Button("Add", id="add"), Button("Cancel", id="cancel")),
+                    Static("[bold]Remove Node[/bold]"),
+                    Input(placeholder="Node ID to remove", id="rid"),
+                    Horizontal(Button("Remove",id="rm"), Button("Cancel",id="cancel")),
                 )
-            def on_button_pressed(self, event):
-                if event.button.id == "add" and ceo_id:
-                    mid = self.query_one("#emp-mgr", Input).value
-                    eid = self.query_one("#emp-id", Input).value
-                    nm = self.query_one("#emp-name", Input).value
-                    role = self.query_one("#emp-role", Input).value or "employee"
-                    if mid and eid and nm:
-                        org_chart.add_employee(ceo_id, mid, eid, nm, role)
-                        agent_tracker.register(eid, role)
+            def on_button_pressed(self, e):
+                if e.button.id == "rm":
+                    n=self.query_one("#rid",Input).value
+                    if n: org_chart.remove_node(n)
                 self.app.pop_screen()
-        self.app.push_screen(AddEmpScreen())
-        self.refresh_later()
+        self.app.push_screen(S()); self.ref_later()
 
-    def refresh_later(self):
+    def det_dlg(self):
+        from textual.screen import ModalScreen
+        class S(ModalScreen):
+            def compose(self):
+                yield Vertical(
+                    Static("[bold]Agent Details[/bold]"),
+                    Input(placeholder="Agent ID", id="did"),
+                    RichLog(id="dlog", highlight=True, markup=True),
+                    Button("Close", id="cancel"),
+                )
+            def on_button_pressed(self, e):
+                if e.button.id == "show":
+                    a=self.query_one("#did",Input).value; l=self.query_one("#dlog",RichLog)
+                    if a:
+                        d=agent_tracker.stats(a)
+                        l.write(json.dumps(d,indent=2) if d else f"[yellow]No data for {a!r}[/yellow]")
+                else: self.app.pop_screen()
+        self.app.push_screen(S())
+
+    def ref_later(self):
         asyncio.get_event_loop().call_later(0.5, self.refresh)
 
     def refresh(self):
-        out = self.query_one("#org-output", RichLog); out.clear()
+        o = self.query_one("#org-out", RichLog); o.clear()
         mind = org_chart.get_mind_map()
-        if not mind:
-            out.write("[yellow]No CEOs yet. Use Add CEO to start.[/yellow]")
-            return
-        tree = RichTree("[bold cyan]Corporate Hierarchy[/bold cyan]")
-        for ceo_id, cd in mind.items():
-            ceo_b = tree.add(f"[bold green]👤 {cd['name']}[/bold green] [dim]({ceo_id})[/dim]")
-            for mgr_id, md in cd.get("managers", {}).items():
-                mgr_b = ceo_b.add(f"[yellow]👤 {md['name']}[/yellow] [dim]({mgr_id})[/dim]")
-                for e in md.get("employees", []):
-                    s = "🟢" if e["status"]=="idle" else "🟡"
-                    mgr_b.add(f"{s} [white]{e['name']}[/white] [dim]({e['role']}, {e['tasks']} tasks)[/dim]")
-            ceo_b.add("[dim]Tip: Use buttons above to add managers/employees[/dim]")
-        out.write(tree)
+        if not mind: o.write("[yellow]No CEOs yet.[/yellow]"); return
+        t = RichTree("[bold cyan]Corporate Hierarchy[/bold cyan]")
+        self._build(t, mind); o.write(t)
+        c = org_chart.total_count()
+        self.query_one("#org-cnt",Static).update(f"[bold]Total: {c['total']} | CEOs: {c['ceos']} | Sub: {c['sub_agents']}[/bold]")
+
+    def _build(self, pb, cd):
+        for nid, nd in sorted(cd.items()):
+            nm = nd["name"]; ad = nd.get("agent_data",{}); st = ad.get("status","?")
+            el = ad.get("elo",1000); sc = "green" if st=="idle" else "yellow"
+            lbl = f"[bold]{nm}[/bold] [dim]({nid})[/dim] [{sc}]{st}[/{sc}] ELO:{el}"
+            br = pb.add(lbl)
+            if nd.get("children"): self._build(br, nd["children"])
+
+
 
 class WorkflowTab(Static):
     def on_mount(self): self.refresh()
@@ -459,6 +478,248 @@ class LibraryTab(Static):
             s = corp_library.stats()
             out.write(f"[bold]Stats:[/bold] {s['total_libraries']} libs, {s['total_agents']} agents, {s['total_usage']} uses, avg quality {s['avg_quality']:.2f}")
 
+class VoteTab(Static):
+    def compose(self):
+        yield Static("[bold cyan]Voting & Consensus[/bold cyan]", id="vote-title")
+        yield RichLog(id="vote-log", highlight=True, markup=True)
+
+    def on_mount(self):
+        log = self.query_one("#vote-log", RichLog)
+        votes = voting_engine.list_votes()
+        log.write("[bold underline]Open Votes[/bold underline]")
+        for v in votes:
+            log.write(f"  [{v['id']}] {v['topic']} — {v['status']} ({len(v['votes'])} votes)")
+
+class ProbeTab(Static):
+    def compose(self):
+        yield Static("[bold cyan]Logic Probe[/bold cyan]", id="probe-title")
+        yield RichLog(id="probe-log", highlight=True, markup=True)
+
+    def on_mount(self):
+        log = self.query_one("#probe-log", RichLog)
+        flagged = logic_probe.list_flagged()
+        log.write("[bold underline]Flagged Contradictions[/bold underline]")
+        for f in flagged:
+            log.write(f"  {f['thought_ids']}: {f['reason']}")
+
+class SentinelTab(Static):
+    def compose(self):
+        yield Static("[bold cyan]Sentinel Monitor[/bold cyan]", id="sentinel-title")
+        yield RichLog(id="sentinel-log", highlight=True, markup=True)
+
+    def on_mount(self):
+        log = self.query_one("#sentinel-log", RichLog)
+        s = sentinel.get_status()
+        log.write("[bold underline]Sentinel Status[/bold underline]")
+        log.write(f"  Health: {s.get('health','?')}")
+        log.write(f"  Uptime: {s.get('uptime','?')}")
+        alerts = sentinel.get_alerts()
+        log.write("[bold underline]Recent Alerts[/bold underline]")
+        for a in alerts[-10:]:
+            log.write(f"  {a['time']} [{a['level']}] {a['message']}")
+
+class SheriffTab(Static):
+    def compose(self):
+        yield Static("[bold cyan]Sheriff Rules[/bold cyan]", id="sheriff-title")
+        yield RichLog(id="sheriff-log", highlight=True, markup=True)
+
+    def on_mount(self):
+        log = self.query_one("#sheriff-log", RichLog)
+        rules = sheriff.list_rules()
+        log.write("[bold underline]Active Rules[/bold underline]")
+        for r in rules:
+            status = "[green]ON[/green]" if r['enabled'] else "[red]OFF[/red]"
+            log.write(f"  [{r['id']}] {r['name']} — {status} (severity={r['severity']})")
+
+class SessionTab(Static):
+    def compose(self):
+        yield Static("[bold cyan]Session Manager[/bold cyan]", id="session-title")
+        yield RichLog(id="session-log", highlight=True, markup=True)
+
+    def on_mount(self):
+        log = self.query_one("#session-log", RichLog)
+        active = session_manager.get_active()
+        log.write("[bold underline]Active Session[/bold underline]")
+        if active:
+            log.write(f"  ID: {active['id']}")
+            log.write(f"  Started: {active['start']}")
+        else:
+            log.write("  No active session.")
+        sessions = session_manager.list_sessions()
+        log.write("[bold underline]Recent Sessions[/bold underline]")
+        for s in sessions[-5:]:
+            log.write(f"  [{s['id']}] {s['start']} — {s.get('status','?')}")
+
+class CogTab(Static):
+    def compose(self):
+        yield Static("[bold cyan]Cognitive Controls[/bold cyan]", id="cog-title")
+        yield RichLog(id="cog-log", highlight=True, markup=True)
+
+    def on_mount(self):
+        log = self.query_one("#cog-log", RichLog)
+        s = cognitive_controls.get_settings()
+        log.write("[bold underline]Cognitive Settings[/bold underline]")
+        for k, v in s.items():
+            log.write(f"  {k}: {v}")
+
+class TrainTab(Static):
+    def compose(self):
+        yield Static("[bold cyan]Training[/bold cyan]", id="train-title")
+        yield RichLog(id="train-log", highlight=True, markup=True)
+
+    def on_mount(self):
+        log = self.query_one("#train-log", RichLog)
+        tasks = training.get_tasks()
+        log.write("[bold underline]Training Tasks[/bold underline]")
+        for t in tasks:
+            log.write(f"  [{t['id']}] {t['name']} — {t.get('status','?')}")
+
+class PBTab(Static):
+    def compose(self):
+        yield Static("[bold cyan]PBT Evolution Tracker[/bold cyan]", id="pbt-title")
+        yield RichLog(id="pbt-log", highlight=True, markup=True)
+
+    def on_mount(self):
+        log = self.query_one("#pbt-log", RichLog)
+        s = pbt_tracker.get_status()
+        log.write("[bold underline]PBT Status[/bold underline]")
+        for k, v in s.items():
+            log.write(f"  {k}: {v}")
+        history = pbt_tracker.get_history()
+        log.write("[bold underline]Fitness History[/bold underline]")
+        for entry in history[-10:]:
+            log.write(f"  gen={entry['gen']} best={entry['best_fitness']:.4f} avg={entry['avg_fitness']:.4f}")
+
+class AgentTreeTab(Static):
+    def on_mount(self): self.refresh()
+    def compose(self):
+        yield Static("[bold cyan]🧠 Agent Workflow Mind Map[/bold cyan]", id="agenttree-title")
+        yield RichLog(id="agenttree-out", highlight=True, markup=True)
+        yield Button("Refresh", id="at-refresh", variant="primary")
+        yield Button("Delegations", id="at-deleg")
+
+    def on_button_pressed(self, e):
+        out = self.query_one("#agenttree-out", RichLog)
+        if e.button.id == "at-refresh": self.refresh()
+        elif e.button.id == "at-deleg":
+            out.clear(); out.write("[bold underline]Delegations[/bold underline]")
+            for d in agent_tree.delegation_history(20):
+                out.write(f"{d['delegated_to']:<20} {d['task'][:50]} -> {' > '.join(d.get('path',[]))}")
+
+    def refresh(self):
+        out = self.query_one("#agenttree-out", RichLog); out.clear()
+        out.write(render_tree_text())
+
+class GitHubTab(Static):
+    def compose(self):
+        yield Static("[bold cyan]🌐 GitHub Integration[/bold cyan]", id="gh-title")
+        yield RichLog(id="gh-out", highlight=True, markup=True)
+        yield Horizontal(
+            Button("User", id="gh-user"), Button("Repos", id="gh-repos"),
+            Button("Issues", id="gh-issues"), Button("Search", id="gh-search"),
+        )
+
+    def on_button_pressed(self, e):
+        out = self.query_one("#gh-out", RichLog); out.clear()
+        if e.button.id == "gh-user":
+            u = github.get_user()
+            out.write(json.dumps(u, indent=2) if isinstance(u, dict) else str(u))
+        elif e.button.id == "gh-repos":
+            for r in github.list_repos()[:15]:
+                out.write(f"{r['full_name']} ★{r['stars']} [{r.get('language','')}]")
+        elif e.button.id == "gh-issues":
+            for i in github.list_issues("octocat", "Hello-World"):
+                out.write(f"#{i['number']} {i['title']}")
+        elif e.button.id == "gh-search":
+            q = self.query_one("#gh-search").value if hasattr(e.button, 'value') else ""
+            for r in github.search_repos("machine learning"):
+                out.write(f"{r['name']} ★{r['stars']}")
+
+class ApiRouterTab(Static):
+    def compose(self):
+        yield Static("[bold cyan]🤖 API Router[/bold cyan]", id="ar-title")
+        yield RichLog(id="ar-out", highlight=True, markup=True)
+        yield Horizontal(
+            Button("List Providers", id="ar-list"), Button("Stats", id="ar-stats"),
+        )
+
+    def on_button_pressed(self, e):
+        out = self.query_one("#ar-out", RichLog); out.clear()
+        if e.button.id == "ar-list":
+            for p in api_router.list_providers():
+                c = ', '.join(p['capabilities'][:3])
+                out.write(f"{p['name']:<20} {p['model']:<30} {c} key={'✓' if p['has_key'] else '✗'}")
+        elif e.button.id == "ar-stats":
+            out.write(json.dumps(api_router.stats(), indent=2))
+
+class CLIPluginTab(Static):
+    def compose(self):
+        yield Static("[bold cyan]🔧 CLI Plugins[/bold cyan]", id="cli-title")
+        yield RichLog(id="cli-out", highlight=True, markup=True)
+        yield Horizontal(
+            Button("List", id="cli-list"), Button("Stats", id="cli-stats"),
+        )
+
+    def on_button_pressed(self, e):
+        out = self.query_one("#cli-out", RichLog); out.clear()
+        if e.button.id == "cli-list":
+            for p in cli_plugins.list_plugins():
+                status = '✅' if p['installed'] else '❌'
+                out.write(f"{status} {p['name']:<15} {p['command']:<20} {p.get('version','')}")
+        elif e.button.id == "cli-stats":
+            out.write(json.dumps(cli_plugins.stats(), indent=2))
+
+class AuthTab(Static):
+    def compose(self):
+        yield Static("[bold cyan]🔑 Auth Manager[/bold cyan]", id="auth-title")
+        yield RichLog(id="auth-out", highlight=True, markup=True)
+        yield Button("Status", id="auth-status")
+
+    def on_button_pressed(self, e):
+        out = self.query_one("#auth-out", RichLog); out.clear()
+        out.write(json.dumps(auth.status(), indent=2))
+
+class PixelVisionTab(Static):
+    def on_mount(self): pass
+    def compose(self):
+        yield Static("[bold cyan]👁 Pixel Vision[/bold cyan]", id="pv-title")
+        yield RichLog(id="pv-out", highlight=True, markup=True)
+        yield Horizontal(
+            Button("Describe Screen", id="pv-desc", variant="primary"),
+            Button("Elements", id="pv-elements"),
+            Button("Colors", id="pv-colors"),
+        )
+
+    def on_button_pressed(self, e):
+        out = self.query_one("#pv-out", RichLog); out.clear()
+        from rich.markdown import Markdown
+        import threading as _t
+        if e.button.id == "pv-desc":
+            out.write("[yellow]Capturing screen...[/yellow]")
+            def _run():
+                try:
+                    d = pixel_vision.describe_screen()
+                    self.app.call_from_thread(lambda: out.write(json.dumps({k:v for k,v in d.items() if k != 'screenshot_b64'}, indent=2)))
+                except Exception as ex:
+                    self.app.call_from_thread(lambda: out.write(f"[red]Error: {ex}[/red]"))
+            _t.Thread(target=_run, daemon=True).start()
+        elif e.button.id == "pv-elements":
+            def _run():
+                try:
+                    els = pixel_vision.detect_elements()
+                    self.app.call_from_thread(lambda: [out.write(f"{e.type:<10} at ({e.x},{e.y}) text='{e.text[:30]}' conf={e.confidence:.2f} {'✓' if e.is_interactive else ' '}") for e in els[:30]])
+                except Exception as ex:
+                    self.app.call_from_thread(lambda: out.write(f"[red]Error: {ex}[/red]"))
+            _t.Thread(target=_run, daemon=True).start()
+        elif e.button.id == "pv-colors":
+            def _run():
+                try:
+                    pal = pixel_vision.detect_color_palette()
+                    self.app.call_from_thread(lambda: [out.write(f"  {c['hex']}  {c['rgb']}") for c in pal])
+                except Exception as ex:
+                    self.app.call_from_thread(lambda: out.write(f"[red]Error: {ex}[/red]"))
+            _t.Thread(target=_run, daemon=True).start()
+
 class MAIKTUI(App):
     TITLE = "MAIK TUI"
     CSS = """
@@ -468,7 +729,7 @@ class MAIKTUI(App):
     TabbedContent { height: 100%; }
     RichLog { border: solid #1a1a3e; padding: 1; height: 1fr; }
     Input { margin: 0 1; }
-    Static#ask-title, Static#status-title, Static#council-title, Static#org-title, Static#wf-title, Static#api-title, Static#agents-title, Static#prompt-title, Static#sched-title, Static#mem-title, Static#lib-title {
+    Static#ask-title, Static#status-title, Static#council-title, Static#org-title, Static#wf-title, Static#api-title, Static#agents-title, Static#prompt-title, Static#sched-title, Static#mem-title, Static#lib-title, Static#vote-title, Static#probe-title, Static#sentinel-title, Static#sheriff-title, Static#session-title, Static#cog-title, Static#train-title, Static#pbt-title {
         padding: 0 1; text-style: bold; background: #0d0d2b; }
     Button { margin: 1; }
     Horizontal { height: auto; }
@@ -500,6 +761,20 @@ class MAIKTUI(App):
             with TabPane("Schedule", id="schedule"): yield ScheduleTab()
             with TabPane("Memory", id="memory"): yield MemoryTab()
             with TabPane("Library", id="library"): yield LibraryTab()
+            with TabPane("Vote", id="vote"): yield VoteTab()
+            with TabPane("Probe", id="probe"): yield ProbeTab()
+            with TabPane("Sentinel", id="sentinel"): yield SentinelTab()
+            with TabPane("Sheriff", id="sheriff"): yield SheriffTab()
+            with TabPane("Session", id="session"): yield SessionTab()
+            with TabPane("Cog", id="cog"): yield CogTab()
+            with TabPane("Train", id="train"): yield TrainTab()
+            with TabPane("PBT", id="pbt"): yield PBTab()
+            with TabPane("🔮 MindMap", id="agenttree"): yield AgentTreeTab()
+            with TabPane("🌐 GitHub", id="github"): yield GitHubTab()
+            with TabPane("🤖 API Router", id="api-router"): yield ApiRouterTab()
+            with TabPane("🔧 CLI", id="cli"): yield CLIPluginTab()
+            with TabPane("🔑 Auth", id="auth"): yield AuthTab()
+            with TabPane("👁 Vision", id="vision"): yield PixelVisionTab()
         yield Footer()
 
     def action_switch_tab(self, tab: str):
