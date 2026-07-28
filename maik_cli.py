@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """MAIK CLI — full-featured terminal interface with all management capabilities."""
 import sys, os, json, time, threading
+from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import click
@@ -49,6 +50,13 @@ from auth_manager import auth
 from agent_tree import agent_tree, AgentStatus
 from mindmap_ui import render_mind_map_json, render_tree_text
 from unified_vision import unified_vision
+from git_engine import git_engine
+from coding_agent import coding_agent
+from sysmon import sysmon
+from agent_memory import agent_memory
+from tool_chain import tool_chain
+from ai_enhance import ai_enhance
+from delta_viewer import delta_viewer
 
 # Alias for UI compatibility
 vote_manager = voting_engine
@@ -1572,6 +1580,111 @@ def search(pattern, path):
         t.add_row(res['file'], str(res['line']), res['content'][:100])
     console.print(t)
 
+# === CODING EDITOR COMMANDS (Claude Code-style) ===
+@cli.group()
+def edit():
+    """AI-powered code editor (Claude Code-style)."""
+
+@edit.command()
+@click.argument("filepath")
+@click.argument("old_text")
+@click.argument("new_text")
+@click.option("--no-backup", is_flag=True, help="Skip backup")
+def sedit(filepath, old_text, new_text, no_backup):
+    """Edit file by replacing text (with diff preview)."""
+    with console.status(f"[cyan]Editing {filepath}...[/cyan]"):
+        result = coding_agent.edit(filepath, old_text, new_text, backup=not no_backup)
+    if result.success:
+        d = result.diff
+        if len(d) > 2000:
+            d = d[:1000] + "\n... (truncated)"
+        console.print(Syntax(d[:2000], "diff", theme="monokai"))
+        console.print(f"[green]Edited {filepath}[/green]")
+        if result.backup_path:
+            console.print(f"[dim]Backup: {result.backup_path}[/dim]")
+    else:
+        console.print(f"[red]Error: {result.error}[/red]")
+
+@edit.command()
+@click.argument("filepath")
+@click.argument("start_line", type=int)
+@click.argument("end_line", type=int)
+@click.argument("new_text")
+@click.option("--no-backup", is_flag=True, help="Skip backup")
+def sedit_lines(filepath, start_line, end_line, new_text, no_backup):
+    """Replace a range of lines."""
+    with console.status(f"[cyan]Editing lines {start_line}-{end_line}...[/cyan]"):
+        result = coding_agent.edit_lines(filepath, start_line, end_line, new_text, backup=not no_backup)
+    if result.success:
+        console.print(result.diff[:2000])
+        console.print(f"[green]Edited {filepath}[/green]")
+    else:
+        console.print(f"[red]Error: {result.error}[/red]")
+
+@edit.command()
+@click.argument("filepath")
+@click.option("--start", "-s", type=int, default=1, help="Start line")
+@click.option("--end", "-e", type=int, help="End line")
+def sread(filepath, start, end):
+    """Read file with optional line range."""
+    content_lines, count = coding_agent.read(filepath, start, end)
+    if count == 0:
+        console.print(f"[red]Error reading {filepath}: {content_lines}[/red]")
+        return
+    ext = os.path.splitext(filepath)[1][1:] or "text"
+    console.print(Syntax(content_lines[:5000], ext, theme="monokai"))
+    console.print(f"[dim]{count} lines[/dim]")
+
+@edit.command()
+@click.argument("filepath")
+@click.argument("content")
+def swrite(filepath, content):
+    """Write a new file (with diff if overwriting)."""
+    with console.status(f"[cyan]Writing {filepath}...[/cyan]"):
+        result = coding_agent.write(filepath, content)
+    if result.success:
+        if result.diff:
+            console.print(Syntax(result.diff[:2000], "diff", theme="monokai"))
+        console.print(f"[green]Written {filepath}[/green]")
+    else:
+        console.print(f"[red]Error: {result.error}[/red]")
+
+@edit.command()
+@click.argument("filepath")
+def slint(filepath):
+    """Lint a file and show issues."""
+    issues = coding_agent.lint(filepath)
+    if not issues:
+        console.print("[green]No issues found[/green]"); return
+    t = Table(box=box.ASCII, title=f"Lint: {filepath}")
+    t.add_column("Line"); t.add_column("Severity"); t.add_column("Message")
+    for issue in issues:
+        sev = {"error": "[red]E[/red]", "warning": "[yellow]W[/yellow]", "info": "[blue]I[/blue]"}
+        t.add_row(str(issue["line"]), sev.get(issue["severity"], "?"), issue["message"])
+    console.print(t)
+
+@edit.command()
+@click.argument("description")
+@click.argument("language")
+@click.option("--output", "-o", help="Output file")
+def sgenerate(description, language, output):
+    """Generate code scaffold from description."""
+    result = coding_agent.generate(description, language, output)
+    ext = os.path.splitext(output)[1][1:] if output else "text"
+    console.print(Syntax(result["content"][:3000], ext or "text", theme="monokai"))
+    if result.get("saved_to"):
+        console.print(f"[green]Saved to {result['saved_to']}[/green]")
+
+@edit.command()
+def sedit_history():
+    """Show edit history."""
+    stats = coding_agent.stats()
+    t = Table(box=box.ASCII, title=f"Edit History ({stats['total_edits']})")
+    t.add_column("#"); t.add_column("Action"); t.add_column("File")
+    for i, h in enumerate(stats.get("recent", []), 1):
+        t.add_row(str(i), h.get("action",""), h.get("file","")[:60])
+    console.print(t)
+
 # === WEB RESEARCH COMMANDS ===
 @cli.group()
 def research():
@@ -1985,7 +2098,269 @@ def codesearch(query, limit):
         t.add_row(str(repo_name)[:40], item.get('path',''))
     console.print(t)
 
-# === AUTH COMMANDS ===
+@gh.command()
+@click.option("--state", default="open", help="PR state: open/closed/merged")
+@click.option("--limit", "-l", default=10, type=int)
+def prs(state, limit):
+    """List GitHub pull requests."""
+    with console.status("[cyan]Fetching PRs...[/cyan]"):
+        pr_list = git_engine.pr_list(state=state, max_count=limit)
+    if not pr_list:
+        console.print("[yellow]No PRs found (gh CLI required)[/yellow]"); return
+    t = Table(box=box.ASCII, title=f"PRs ({state})")
+    t.add_column("#"); t.add_column("Title"); t.add_column("Author"); t.add_column("Branch")
+    for pr in pr_list:
+        author = pr.get('author',{}).get('login','?') if isinstance(pr.get('author'),dict) else '?'
+        head = pr.get('headRefName','')
+        t.add_row(str(pr.get('number','')), pr.get('title','')[:60], author, head)
+    console.print(t)
+
+@gh.command()
+@click.argument("title")
+@click.option("--body", default="", help="PR body text")
+def prcreate(title, body):
+    """Create a GitHub pull request."""
+    with console.status("[cyan]Creating PR...[/cyan]"):
+        out, err, code = git_engine.pr_create(title, body)
+    if code == 0:
+        console.print(f"[green]PR created: {out}[/green]")
+    else:
+        console.print(f"[red]Failed: {err}[/red]")
+
+@gh.command()
+def pistatus():
+    """Show CI/CD pipeline status."""
+    with console.status("[cyan]Checking CI status...[/cyan]"):
+        runs = git_engine.ci_status()
+    if not runs:
+        console.print("[yellow]No CI runs found (gh CLI required)[/yellow]"); return
+    t = Table(box=box.ASCII, title="CI/CD Status")
+    t.add_column("Name"); t.add_column("Status"); t.add_column("Conclusion")
+    for run in runs:
+        s = run.get('status','?')
+        c = run.get('conclusion','?') or 'running'
+        t.add_row(run.get('displayTitle','')[:50], s, c)
+    console.print(t)
+
+# === GIT COMMANDS (lazygit-style) ===
+@cli.group()
+def git():
+    """Git operations (lazygit-style TUI)."""
+
+@git.command()
+def gstatus():
+    """Show working tree status (like lazygit Files panel)."""
+    files, branch = git_engine.status()
+    t = Table(box=box.ASCII, title=f"Branch: {branch.get('branch','?')}  "
+              f"{'[green]↑'+str(branch.get('ahead',0))+'[/green]' if branch.get('ahead') else ''}"
+              f"{'[red]↓'+str(branch.get('behind',0))+'[/red]' if branch.get('behind') else ''}")
+    t.add_column("Status"); t.add_column("Staged"); t.add_column("File"); t.add_column("+/-")
+    for f in files:
+        staged_str = "Y" if f.staged else ""
+        stats = f"+{f.additions}/-{f.deletions}" if (f.additions or f.deletions) else ""
+        t.add_row(f.status, staged_str, f.path[:80], stats)
+    console.print(t)
+    console.print(f"[cyan]{len(files)} files[/cyan]")
+
+@git.command()
+@click.argument("paths", nargs=-1)
+def gadd(paths):
+    """Stage files (space to toggle in lazygit)."""
+    out, err, code = git_engine.stage(list(paths) if paths else None)
+    if code == 0:
+        console.print("[green]Staged[/green]")
+    else:
+        console.print(f"[red]{err}[/red]")
+
+@git.command()
+@click.argument("paths", nargs=-1)
+def gunstage(paths):
+    """Unstage files."""
+    out, err, code = git_engine.unstage(list(paths) if paths else None)
+    if code == 0:
+        console.print("[green]Unstaged[/green]")
+    else:
+        console.print(f"[red]{err}[/red]")
+
+@git.command()
+@click.argument("message", required=False)
+@click.option("--ai", is_flag=True, help="Generate commit message from diff")
+@click.option("--amend", is_flag=True, help="Amend last commit")
+def gcommit(message, ai, amend):
+    """Commit staged changes (with optional AI message)."""
+    if amend:
+        out, err, code = git_engine.commit_amend()
+    elif ai or not message:
+        msg = git_engine.commit_ai_message()
+        if not message:
+            message = msg
+        out, err, code = git_engine.commit(message)
+    else:
+        out, err, code = git_engine.commit(message)
+    if code == 0:
+        console.print(f"[green]Committed: {out[:100]}[/green]")
+    else:
+        console.print(f"[red]{err}[/red]")
+
+@git.command()
+def glog():
+    """Show commit log (like lazygit Commits panel)."""
+    log = git_engine.log(max_count=30, pretty="medium")
+    if not log:
+        console.print("[yellow]No commits[/yellow]")
+        return
+    console.print(Syntax(log, "bash", theme="monokai"))
+
+@git.command()
+def gbranch():
+    """List and manage branches (like lazygit Branches panel)."""
+    branches = git_engine.branches()
+    t = Table(box=box.ASCII, title="Branches")
+    t.add_column("Current"); t.add_column("Name"); t.add_column("Last Commit")
+    for b in branches:
+        cur = "*" if b.current else ""
+        t.add_row(cur, b.name, b.last_commit[:60])
+    console.print(t)
+
+@git.command()
+@click.argument("name")
+@click.option("--base", help="Base branch")
+def gbranch_create(name, base):
+    """Create a new branch."""
+    out, err, code = git_engine.branch_create(name, base)
+    if code == 0:
+        console.print(f"[green]Created branch: {name}[/green]")
+    else:
+        console.print(f"[red]{err}[/red]")
+
+@git.command()
+@click.argument("name")
+@click.option("--force", is_flag=True, help="Force delete")
+def gbranch_delete(name, force):
+    """Delete a branch."""
+    out, err, code = git_engine.branch_delete(name, force)
+    if code == 0:
+        console.print(f"[green]Deleted branch: {name}[/green]")
+    else:
+        console.print(f"[red]{err}[/red]")
+
+@git.command()
+@click.argument("name")
+@click.option("--create", "-c", is_flag=True, help="Create and switch")
+def gswitch(name, create):
+    """Switch branch."""
+    out, err, code = git_engine.branch_switch(name, create)
+    if code == 0:
+        console.print(f"[green]Switched to {name}[/green]")
+    else:
+        console.print(f"[red]{err}[/red]")
+
+@git.command()
+@click.argument("name")
+def gmerge(name):
+    """Merge a branch."""
+    out, err, code = git_engine.branch_merge(name)
+    if code == 0:
+        console.print(f"[green]Merged {name}[/green]")
+    else:
+        console.print(f"[red]{err}[/red]")
+
+@git.command()
+@click.option("--staged", is_flag=True, help="Show staged changes")
+@click.argument("filepath", required=False)
+def gdiff(filepath, staged):
+    """Show diff (delta-style)."""
+    diff = git_engine.diff(filepath, staged=staged)
+    if diff["raw"]:
+        console.print(Syntax(diff["raw"][:5000], "diff", theme="monokai"))
+    else:
+        console.print("[yellow]No changes[/yellow]")
+
+@git.command()
+def gstash():
+    """List stashes."""
+    stashes = git_engine.stash_list()
+    if not stashes:
+        console.print("[yellow]No stashes[/yellow]"); return
+    t = Table(box=box.ASCII, title="Stashes")
+    t.add_column("#"); t.add_column("Message")
+    for s in stashes:
+        t.add_row(str(s.index), s.message[:80])
+    console.print(t)
+
+@git.command()
+@click.argument("message", required=False)
+def gstash_push(message):
+    """Stash changes."""
+    out, err, code = git_engine.stash_push(message or "")
+    if code == 0:
+        console.print("[green]Stashed[/green]")
+    else:
+        console.print(f"[red]{err}[/red]")
+
+@git.command()
+@click.argument("index", default=0, type=int)
+def gstash_pop(index):
+    """Pop a stash."""
+    out, err, code = git_engine.stash_pop(index)
+    if code == 0:
+        console.print("[green]Stash popped[/green]")
+    else:
+        console.print(f"[red]{err}[/red]")
+
+@git.command()
+def greflog():
+    """Show reflog (for undo/recovery)."""
+    log = git_engine.reflog(max_count=30)
+    if log:
+        console.print(Syntax(log[0][:5000] if isinstance(log, tuple) else log[:5000], "bash", theme="monokai"))
+    else:
+        console.print("[yellow]No reflog[/yellow]")
+
+@git.command()
+def gworktree():
+    """List worktrees."""
+    wts = git_engine.worktree_list()
+    if not wts:
+        console.print("[yellow]No worktrees[/yellow]"); return
+    t = Table(box=box.ASCII, title="Worktrees")
+    t.add_column("Path"); t.add_column("Branch"); t.add_column("Hash")
+    for w in wts:
+        t.add_row(w.get('path',''), w.get('branch',''), w.get('hash','')[:12])
+    console.print(t)
+
+
+@git.command()
+@click.option("--staged", is_flag=True)
+@click.option("--all", "-a", "all_files", is_flag=True)
+def smart_commit(staged, all_files):
+    """AI commit message + commit."""
+    import subprocess as _sp
+    if all_files: _sp.run(["git", "add", "-A"], check=True, capture_output=True)
+    cmd = ["git", "diff", "--cached"] if staged or all_files else ["git", "diff"]
+    r = _sp.run(cmd, capture_output=True, text=True, timeout=30)
+    if not r.stdout.strip(): console.print("[yellow]No changes.[/yellow]"); return
+    console.print("[yellow]Generating commit message...[/yellow]")
+    msg = ai_enhance.generate_commit_message(r.stdout)
+    console.print(f"[green]Proposed:[/green]\n{msg}")
+    confirm = input("Commit? [Y/n]: ").strip().lower()
+    if confirm in ("", "y", "yes"): _sp.run(["git", "commit", "-m", msg], check=True); console.print("[green]Committed![/green]")
+    else:
+        custom = input("Custom message: ").strip()
+        if custom: _sp.run(["git", "commit", "-m", custom], check=True)
+
+
+@git.command()
+@click.argument("file", required=False, default=None)
+def resolve(file):
+    """AI suggest conflict resolution."""
+    import subprocess as _sp
+    r = _sp.run(["git", "diff", file] if file else ["git", "diff"], capture_output=True, text=True, timeout=30)
+    if not r.stdout.strip(): console.print("[yellow]No diffs.[/yellow]"); return
+    console.print("[yellow]Analyzing conflict...[/yellow]")
+    console.print(Panel(ai_enhance.resolve_conflict_hint(r.stdout), title="Resolution", border_style="yellow"))
+
+
 @cli.group()
 def creds():
     """Manage encrypted credentials."""
@@ -2136,6 +2511,751 @@ def diff():
                 console.print(str(changes)[:1000])
         except Exception as e:
             console.print(f"[red]Change detection failed: {e}[/red]")
+
+# === SEARCH COMMANDS (rg + fd + fzf hybrid) ===
+@cli.group()
+def search():
+    """Search code & files (rg/fd/fzf hybrid)."""
+
+@search.command()
+@click.argument("pattern")
+@click.argument("path", default=".")
+@click.option("--regex", is_flag=True, help="Treat pattern as regex")
+@click.option("--include", "-i", multiple=True, help="File extension filter (e.g. .py)")
+@click.option("--exclude", "-x", multiple=True, help="Exclude extensions")
+@click.option("--max", "max_results", default=500, help="Max results")
+@click.option("--json", "json_out", is_flag=True, help="JSON output")
+def rgrep(pattern, path, regex, include, exclude, max_results, json_out):
+    """Recursive text search (like ripgrep)."""
+    from search_engine import search_engine
+    inc = list(include) if include else None
+    exc = list(exclude) if exclude else None
+    with console.status(f"[cyan]Searching for '{pattern}'...[/cyan]"):
+        results = search_engine.search_text(pattern, path, regex=regex, max_results=max_results,
+                                            include_ext=inc, exclude_ext=exc)
+    if json_out:
+        console.print(json.dumps([{"file": m.file, "line": m.line, "text": m.text[:200]}
+                                  for m in results.matches[:max_results]], indent=2))
+        return
+    if not results.matches:
+        console.print(f"[yellow]No matches for '{pattern}' in {path}[/yellow]")
+        return
+    t = Table(box=box.ASCII)
+    t.add_column("File"); t.add_column("Line"); t.add_column("Text")
+    for m in results.matches[:max_results]:
+        t.add_row(os.path.relpath(m.file, path)[:60], str(m.line), m.text[:120])
+    console.print(t)
+    console.print(f"[cyan]{results.total} matches in {results.elapsed:.2f}s[/cyan]")
+
+@search.command()
+@click.argument("pattern")
+@click.argument("path", default=".")
+@click.option("--fuzzy", "-f", is_flag=True, help="Fuzzy matching")
+@click.option("--include", "-i", multiple=True, help="Extension filter")
+@click.option("--max", "max_results", default=100, help="Max results")
+def find(pattern, path, fuzzy, include, max_results):
+    """Find files by name (like fd)."""
+    from search_engine import search_engine
+    inc = list(include) if include else None
+    with console.status(f"[cyan]Finding files matching '{pattern}'...[/cyan]"):
+        results = search_engine.search_files(pattern, path, fuzzy=fuzzy,
+                                             max_results=max_results, include_ext=inc)
+    if not results.matches:
+        console.print(f"[yellow]No files matching '{pattern}' in {path}[/yellow]")
+        return
+    t = Table(box=box.ASCII)
+    t.add_column("File"); t.add_column("Type")
+    for m in results.matches[:max_results]:
+        ext = os.path.splitext(m.file)[1] or "?"
+        t.add_row(m.file[:80], ext)
+    console.print(t)
+    console.print(f"[cyan]{results.total} files found in {results.elapsed:.2f}s[/cyan]")
+
+@search.command()
+@click.argument("pattern")
+@click.option("--path", default=".", help="Path to search")
+@click.option("--preview", "-p", is_flag=True, help="Show preview context")
+def interactive(pattern, path, preview):
+    """Interactive search with fuzzy finder (like fzf)."""
+    from search_engine import search_engine
+    with console.status(f"[cyan]Searching...[/cyan]"):
+        results = search_engine.search_text(pattern, path)
+    if not results.matches:
+        console.print(f"[yellow]No matches[/yellow]")
+        return
+    items = [f"{os.path.relpath(m.file, path)}:{m.line}: {m.text[:80]}" for m in results.matches[:200]]
+    selected = search_engine.interactive_find(items)
+    if selected:
+        for s in selected:
+            console.print(s)
+    console.print(f"[cyan]{results.total} matches total[/cyan]")
+
+@search.command()
+def shistory():
+    """Show search history."""
+    from search_engine import search_engine
+    stats = search_engine.stats()
+    t = Table(box=box.ASCII, title="Search History")
+    t.add_column("#"); t.add_column("Pattern"); t.add_column("Path"); t.add_column("Matches"); t.add_column("Time")
+    for i, h in enumerate(stats.get("recent", []), 1):
+        t.add_row(str(i), h.get("pattern","")[:30], h.get("path","")[:20], str(h.get("total",0)), f"{h.get('elapsed',0):.2f}s")
+    console.print(t)
+
+@search.command()
+@click.argument("query")
+@click.option("--files", "-f", default="", help="Comma-separated files")
+def ai_s(query, files):
+    """AI semantic code search."""
+    file_list = [f.strip() for f in files.split(",") if f.strip()] if files else None
+    results = ai_enhance.semantic_search(query, file_paths=file_list)
+    if isinstance(results, list):
+        t = Table(box=box.ASCII, title=f"AI Search: {query}")
+        t.add_column("File"); t.add_column("Line"); t.add_column("Snippet")
+        for r in results[:10]:
+            t.add_row(r.get("file","?")[:30], str(r.get("line","?")), r.get("snippet","")[:80])
+        console.print(t)
+    else:
+        console.print(str(results)[:500])
+
+
+@search.command()
+@click.argument("query")
+@click.option("--limit", "-l", default=20, type=int)
+@click.option("--dir", "-d", "sdir", default=".", help="Search directory")
+def afuzzy(query, limit, sdir):
+    """AI-enhanced fuzzy search with context."""
+    from search_engine import search_engine
+    raw = search_engine.search_text(query, path=sdir)
+    if hasattr(raw, 'get') and raw.get("error"):
+        console.print(f"[red]{raw['error']}[/red]"); return
+    matches = []
+    if hasattr(raw, 'get'):
+        matches = raw.get("results", raw.get("matches", []))[:limit]
+    elif hasattr(raw, '__iter__'):
+        matches = list(raw)[:limit]
+    if not matches:
+        console.print("[yellow]No matches.[/yellow]"); return
+    t = Table(box=box.ASCII, title=f"Fuzzy Search: {query}")
+    t.add_column("File"); t.add_column("Line"); t.add_column("Content")
+    for m in matches[:limit]:
+        path = m.get("path", m.get("file", ""))[:30] if hasattr(m, 'get') else str(m)[:30]
+        line = str(m.get("line", m.get("lineno", ""))) if hasattr(m, 'get') else ""
+        content = m.get("line", m.get("content", ""))[:60] if hasattr(m, 'get') else str(m)[:60]
+        t.add_row(path, line, content)
+    console.print(t)
+
+# === DATA COMMANDS (jq + yq hybrid) ===
+@cli.group()
+def data():
+    """Query & transform data (jq/yq hybrid)."""
+
+@data.command()
+@click.argument("filepath")
+@click.argument("expression", default=".")
+@click.option("--raw", is_flag=True, help="Raw output (no pretty-print)")
+def dquery(filepath, expression, raw):
+    """Query JSON/YAML/CSV data (like jq)."""
+    from data_query_engine import data_query
+    with console.status(f"[cyan]Querying {filepath}...[/cyan]"):
+        result = data_query.query(filepath, expression, raw=raw)
+    if not result.get("success"):
+        console.print(f"[red]Error: {result.get('error')}[/red]")
+        return
+    console.print(f"[dim]Format: {result['format']}[/dim]")
+    console.print(str(result["output"])[:5000] or "(empty)")
+
+@data.command()
+@click.argument("filepath")
+def dschema(filepath):
+    """Infer data schema (schema inference)."""
+    from data_query_engine import data_query
+    with console.status(f"[cyan]Inferring schema...[/cyan]"):
+        result = data_query.schema(filepath)
+    if not result.get("success"):
+        console.print(f"[red]Error: {result.get('error')}[/red]")
+        return
+    console.print(f"[bold]Schema ({result['format']}):[/bold]")
+    console.print(result["output"][:5000])
+
+@data.command()
+@click.argument("filepath")
+@click.option("--filter", "-f", help="Filter expression")
+@click.option("--sort", help="Sort key")
+@click.option("--reverse", is_flag=True)
+@click.option("--limit", type=int, help="Max items")
+def dtransform(filepath, filter, sort, reverse, limit):
+    """Transform data: filter, sort, slice."""
+    from data_query_engine import data_query
+    with console.status(f"[cyan]Transforming...[/cyan]"):
+        result = data_query.transform(filepath, filter_expr=filter, sort_key=sort,
+                                       reverse=reverse, limit=limit)
+    if not result.get("success"):
+        console.print(f"[red]Error: {result.get('error')}[/red]")
+        return
+    t = Table(box=box.ASCII, title=f"{result['count']} items")
+    items = result["data"]
+    if items and isinstance(items[0], dict):
+        keys = list(items[0].keys())[:10]
+        for k in keys:
+            t.add_column(k)
+        for item in items[:50]:
+            t.add_row(*[str(item.get(k, ""))[:40] for k in keys])
+        console.print(t)
+    else:
+        console.print(result["output"][:5000])
+
+@data.command()
+def dhistory():
+    """Show query history."""
+    from data_query_engine import data_query
+    stats = data_query.stats()
+    t = Table(box=box.ASCII, title="Query History")
+    t.add_column("#"); t.add_column("File"); t.add_column("Expr"); t.add_column("Format"); t.add_column("Time")
+    for i, h in enumerate(stats.get("recent", []), 1):
+        t.add_row(str(i), h.get("file","")[:30], h.get("expr","")[:20], h.get("format",""), f"{h.get('elapsed',0):.3f}s")
+    console.print(t)
+
+
+@data.command()
+@click.argument("sample_file")
+def ainfer(sample_file):
+    """Infer JSON schema from data file."""
+    import json as _json
+    try:
+        with open(sample_file, "r", encoding="utf-8") as f:
+            raw = f.read()[:5000]
+    except OSError as e:
+        console.print(f"[red]{e}[/red]"); return
+    try:
+        parsed = _json.loads(raw)
+        sample = _json.dumps(parsed, indent=2)[:4000]
+    except _json.JSONDecodeError:
+        sample = raw[:4000]
+    console.print("[yellow]Inferring schema with AI...[/yellow]")
+    schema = ai_enhance.schema_infer(sample)
+    console.print(_json.dumps(schema, indent=2) if isinstance(schema, dict) else str(schema))
+
+
+@data.command()
+@click.argument("natural_query")
+def aiquery(natural_query):
+    """Build jq query from natural language."""
+    console.print(f"[yellow]Translating:[/yellow] {natural_query}")
+    result = ai_enhance.ai_query_builder(natural_query)
+    console.print(f"[green]Query:[/green] {result}")
+
+# === AI EDIT COMMANDS ===
+
+@edit.command()
+@click.argument("file_a", required=False, default=None)
+@click.argument("file_b", required=False, default=None)
+@click.option("--staged", is_flag=True)
+@click.option("--stdin", "from_stdin", is_flag=True)
+def explain(file_a, file_b, staged, from_stdin):
+    """AI explain a diff in plain English."""
+    import subprocess as _sp, difflib as _dl
+    diff_text = ""
+    if from_stdin: diff_text = sys.stdin.read()
+    elif staged: r = _sp.run(["git", "diff", "--cached"], capture_output=True, text=True, timeout=30); diff_text = r.stdout
+    elif file_a and file_b:
+        with open(file_a) as f: ta = f.read()
+        with open(file_b) as f: tb = f.read()
+        diff_text = "\n".join(_dl.unified_diff(ta.splitlines(), tb.splitlines(), fromfile=file_a, tofile=file_b))
+    elif file_a: r = _sp.run(["git", "diff", file_a], capture_output=True, text=True, timeout=30); diff_text = r.stdout
+    else: r = _sp.run(["git", "diff"], capture_output=True, text=True, timeout=30); diff_text = r.stdout
+    if not diff_text.strip(): console.print("[yellow]No diff.[/yellow]"); return
+    console.print("[yellow]Analyzing diff with AI...[/yellow]")
+    console.print(Panel(ai_enhance.explain_diff(diff_text), title="Diff Explanation", border_style="green"))
+
+# === AGENT LOOP COMMANDS (Phase 4) ===
+
+@cli.group()
+def agent():
+    """Agent loop: memory, chain, session."""
+
+
+# === AGENT MEMORY ===
+
+@agent.group()
+def memory():
+    """Persistent agent memory (store/recall/search)."""
+
+
+@memory.command("store")
+@click.argument("key")
+@click.argument("data")
+@click.option("--meta", "-m", default="", help="JSON metadata string")
+def memory_store(key, data, meta):
+    """Store a memory entry."""
+    metadata = json.loads(meta) if meta else {}
+    result = agent_memory.store(key, data, metadata)
+    console.print(f"[green]Stored[/green] [bold]{result['stored']}[/bold] ({result['size']} bytes)")
+
+
+@memory.command("recall")
+@click.argument("key")
+def memory_recall(key):
+    """Recall a memory entry by key."""
+    entry = agent_memory.recall(key)
+    if entry is None:
+        console.print(f"[yellow]No memory found for key:[/yellow] {key}")
+        return
+    t = Table(box=box.ASCII, title=f"Memory: {key}")
+    t.add_column("Field"); t.add_column("Value")
+    t.add_row("Data", str(entry["data"])[:200])
+    t.add_row("Created", datetime.fromtimestamp(entry["created"]).isoformat() if entry.get("created") else "N/A")
+    t.add_row("Updated", datetime.fromtimestamp(entry["updated"]).isoformat() if entry.get("updated") else "N/A")
+    if entry.get("metadata"):
+        t.add_row("Metadata", str(entry["metadata"])[:200])
+    console.print(t)
+
+
+@memory.command("search")
+@click.argument("query")
+@click.option("--top", "-t", default=10, type=int)
+def memory_search(query, top):
+    """Search memories by keyword."""
+    results = agent_memory.search(query, top_k=top)
+    if not results:
+        console.print("[yellow]No matches.[/yellow]"); return
+    t = Table(box=box.ASCII, title=f"Search: {query}")
+    t.add_column("Key"); t.add_column("Data (truncated)")
+    for r in results:
+        t.add_row(r.get("key", "?"), str(r.get("data", ""))[:80])
+    console.print(t)
+
+
+@memory.command("forget")
+@click.argument("key")
+def memory_forget(key):
+    """Delete a memory entry."""
+    if agent_memory.forget(key):
+        console.print(f"[green]Forgot[/green] {key}")
+    else:
+        console.print(f"[yellow]Not found:[/yellow] {key}")
+
+
+@memory.command("list")
+@click.option("--prefix", "-p", default="", help="Filter by key prefix")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+def memory_list(prefix, as_json):
+    """List all memory keys."""
+    keys = agent_memory.list_keys(prefix=prefix or None)
+    if not keys:
+        console.print("[yellow]No memories stored.[/yellow]"); return
+    if as_json:
+        console.print(json.dumps(keys, indent=2))
+    else:
+        for k in keys:
+            console.print(f"  [cyan]{k}[/cyan]")
+
+
+@memory.command("stats")
+def memory_stats():
+    """Show memory statistics."""
+    s = agent_memory.stats()
+    t = Table(box=box.ASCII, title="Memory Stats")
+    t.add_column("Metric"); t.add_column("Value")
+    t.add_row("Total entries", str(s["total_entries"]))
+    t.add_row("Total size", f"{s['total_size_kb']} KB")
+    console.print(t)
+    if s["keys"]:
+        console.print("[bold]Recent keys:[/bold]")
+        for k in s["keys"]:
+            console.print(f"  [dim]{k}[/dim]")
+        if s["has_more"]:
+            console.print(f"  ... and {s['total_entries'] - len(s['keys'])} more")
+
+
+# === AGENT SESSION ===
+
+@agent.group()
+def session():
+    """Interactive agent session management."""
+
+
+@session.command("start")
+@click.argument("session_id", required=False, default=None)
+def session_start(session_id):
+    """Start a new agent session."""
+    sid = agent_memory.session_start(session_id)
+    console.print(f"[green]Session started:[/green] [bold]{sid}[/bold]")
+
+
+@session.command("log")
+@click.argument("session_id")
+@click.argument("event_type")
+@click.argument("content")
+def session_log_cmd(session_id, event_type, content):
+    """Log an event to a session."""
+    if agent_memory.session_log(session_id, event_type, content):
+        console.print(f"[green]Logged[/green] {event_type} to {session_id}")
+    else:
+        console.print(f"[yellow]Session {session_id} not found. Start it first.[/yellow]")
+
+
+@session.command("save")
+@click.argument("session_id")
+def session_save(session_id):
+    """Save session to persistent memory."""
+    if agent_memory.session_save(session_id):
+        console.print(f"[green]Session saved:[/green] {session_id}")
+    else:
+        console.print(f"[yellow]No active session buffer for {session_id}[/yellow]")
+
+
+@session.command("load")
+@click.argument("session_id")
+def session_load(session_id):
+    """Load a saved session."""
+    data = agent_memory.session_load(session_id)
+    if data is None:
+        console.print(f"[yellow]No saved session:[/yellow] {session_id}")
+        return
+    t = Table(box=box.ASCII, title=f"Session: {session_id}")
+    t.add_column("#"); t.add_column("Type"); t.add_column("Content"); t.add_column("Time")
+    events = data.get("events", [])
+    if isinstance(events, list):
+        for i, ev in enumerate(events):
+            ts = datetime.fromtimestamp(ev.get("timestamp", 0)).isoformat() if isinstance(ev, dict) else ""
+            t.add_row(str(i+1), ev.get("type", "?") if isinstance(ev, dict) else "?",
+                      str(ev.get("content", ""))[:60] if isinstance(ev, dict) else str(ev)[:60], ts)
+    console.print(t)
+
+
+@session.command("list")
+def session_list():
+    """List all sessions."""
+    sessions = agent_memory.session_list()
+    if not sessions:
+        console.print("[yellow]No sessions.[/yellow]"); return
+    t = Table(box=box.ASCII, title="Sessions")
+    t.add_column("Session ID"); t.add_column("Events"); t.add_column("Created")
+    for s in sessions:
+        created = datetime.fromtimestamp(s["created"]).isoformat() if s.get("created") else "N/A"
+        t.add_row(s["session_id"], str(s["events"]), created)
+    console.print(t)
+
+
+# === TOOL CHAIN ===
+
+@agent.group()
+def chain():
+    """Tool chain pipelines (compose commands)."""
+
+
+@chain.command("define")
+@click.argument("name")
+@click.argument("steps_json", required=False, default=None)
+@click.option("--file", "-f", type=click.Path(exists=True), help="JSON file with steps")
+@click.option("--desc", "-d", default="", help="Chain description")
+def chain_define(name, steps_json, file, desc):
+    """Define a chain from JSON steps (inline or --file)."""
+    try:
+        if file:
+            with open(file, "r", encoding="utf-8") as f:
+                steps = json.load(f)
+        elif steps_json:
+            steps = json.loads(steps_json)
+        else:
+            console.print("[red]Provide steps as JSON string or --file[/red]"); return
+        if not isinstance(steps, list):
+            console.print("[red]Steps must be a JSON array[/red]"); return
+        tool_chain.define(name, steps, description=desc)
+        console.print(f"[green]Chain defined:[/green] [bold]{name}[/bold] ({len(steps)} steps)")
+    except (json.JSONDecodeError, ValueError) as e:
+        console.print(f"[red]Invalid JSON: {e}[/red]")
+
+
+@chain.command("run")
+@click.argument("name")
+@click.option("--input", "-i", multiple=True, help="Inputs as key=value")
+@click.option("--quiet", "-q", is_flag=True, help="Suppress step output")
+def chain_run(name, input, quiet):
+    """Execute a tool chain."""
+    inputs = {}
+    for kv in input:
+        if "=" in kv:
+            k, v = kv.split("=", 1)
+            inputs[k] = v
+    result = tool_chain.run(name, inputs=inputs, verbose=not quiet)
+    if "error" in result:
+        console.print(f"[red]{result['error']}[/red]"); return
+    console.print()
+    t = Table(box=box.ASCII, title=f"Chain: {name}")
+    t.add_column("Step"); t.add_column("Tool"); t.add_column("Status")
+    for s in result["steps"]:
+        status = "[green]OK[/green]" if s["success"] else "[red]FAIL[/red]"
+        t.add_row(s["id"], s["tool"], status)
+    console.print(t)
+    if not quiet and result.get("outputs"):
+        console.print("[bold]Captured outputs:[/bold]")
+        for k, v in result["outputs"].items():
+            console.print(f"  [cyan]{k}[/cyan] = {v[:100]}")
+
+
+@chain.command("list")
+def chain_list():
+    """List all defined chains."""
+    chains = tool_chain.list_chains()
+    if not chains:
+        console.print("[yellow]No chains defined.[/yellow]"); return
+    t = Table(box=box.ASCII, title="Tool Chains")
+    t.add_column("Name"); t.add_column("Description"); t.add_column("Steps")
+    for c in chains:
+        t.add_row(c["name"], c.get("description", "")[:50], str(c["steps"]))
+    console.print(t)
+
+
+@chain.command("show")
+@click.argument("name")
+def chain_show(name):
+    """Show chain definition."""
+    c = tool_chain.get(name)
+    if not c:
+        console.print(f"[yellow]Chain not found:[/yellow] {name}"); return
+    console.print(json.dumps(c, indent=2))
+
+
+@chain.command("delete")
+@click.argument("name")
+def chain_delete(name):
+    """Delete a chain."""
+    if tool_chain.delete(name):
+        console.print(f"[green]Deleted chain:[/green] {name}")
+    else:
+        console.print(f"[yellow]Chain not found:[/yellow] {name}")
+
+
+# === SYSTEM MONITOR COMMANDS (btop-style) ===
+@cli.group()
+def sys():
+    """System monitoring (btop-style dashboard)."""
+
+@sys.command()
+def stop():
+    """Show CPU, memory, disk, network summary."""
+    try:
+        import psutil
+    except ImportError:
+        console.print("[red]psutil not installed. Run: pip install psutil[/red]")
+        return
+    s = sysmon.summary()
+    t = Table(box=box.ASCII, title="System Health")
+    t.add_column("Metric"); t.add_column("Value")
+    t.add_row("CPU", f"{s['cpu_percent']}%")
+    t.add_row("Memory", f"{s['memory_percent']}% ({s['memory_used_gb']}/{s['memory_total_gb']}GB)")
+    t.add_row("Disk", f"{s['disk_percent']}% ({s['disk_used_gb']}GB used)")
+    t.add_row("Network Connections", str(s['connections']))
+    t.add_row("Processes", str(s['processes']))
+    console.print(t)
+    if s.get("top_processes"):
+        t2 = Table(box=box.ASCII, title="Top Processes")
+        t2.add_column("Name"); t2.add_column("CPU%"); t2.add_column("MEM%")
+        for name, cpu_p, mem_p in s["top_processes"]:
+            t2.add_row(name[:30], f"{cpu_p:.1f}", f"{mem_p:.1f}")
+        console.print(t2)
+
+
+@gh.command()
+@click.argument("pr_number", required=False, default=None)
+@click.option("--from-current", is_flag=True)
+def summarize(pr_number, from_current):
+    """AI generate PR summary."""
+    import subprocess as _sp
+    try:
+        if pr_number: r = _sp.run(["gh", "pr", "view", pr_number, "--json", "title,body,files,additions,deletions,author,state"], capture_output=True, text=True, timeout=30)
+        elif from_current: r = _sp.run(["gh", "pr", "view", "--json", "title,body,files,additions,deletions,author,state"], capture_output=True, text=True, timeout=30)
+        else: console.print("[yellow]Provide PR number or --from-current[/yellow]"); return
+        if r.returncode != 0: console.print(f"[red]gh error: {r.stderr}[/red]"); return
+        pr_data = json.loads(r.stdout)
+    except Exception as e: console.print(f"[red]Error: {e}[/red]"); return
+    console.print("[yellow]Generating PR summary...[/yellow]")
+    console.print(Panel(ai_enhance.summarize_pr(pr_data), title="PR Summary", border_style="cyan"))
+
+@sys.command()
+@click.option("--interval", "-i", default=1.0, type=float, help="Refresh interval (s)")
+@click.option("--count", "-c", default=5, type=int, help="Number of samples")
+def spoll(interval, count):
+    """Poll CPU/memory in real-time (like btop live view)."""
+    try:
+        import psutil
+    except ImportError:
+        console.print("[red]psutil required[/red]"); return
+    for i in range(count):
+        from sysmon import sysmon
+        cpu = sysmon.cpu()
+        mem = sysmon.memory()
+        bar_len = 20
+        cpu_pct = cpu.percent / 100.0
+        mem_pct = mem.percent / 100.0
+        cpu_filled = int(cpu_pct * bar_len)
+        mem_filled = int(mem_pct * bar_len)
+        cpu_bar = "#" * cpu_filled + "-" * (bar_len - cpu_filled)
+        mem_bar = "#" * mem_filled + "-" * (bar_len - mem_filled)
+        console.print(f"[cyan]CPU:[/cyan] {cpu.percent:5.1f}% |{cpu_bar}| [cyan]MEM:[/cyan] {mem.percent:5.1f}% |{mem_bar}|")
+        if i < count - 1:
+            time.sleep(interval)
+
+@sys.command()
+def scpu():
+    """Show detailed CPU info."""
+    info = sysmon.cpu()
+    t = Table(box=box.ASCII, title="CPU")
+    t.add_column("Metric"); t.add_column("Value")
+    t.add_row("Usage", f"{info.percent}%")
+    t.add_row("Physical cores", str(info.count_physical))
+    t.add_row("Logical cores", str(info.count_logical))
+    t.add_row("Frequency", f"{info.freq_current:.0f} MHz" if info.freq_current else "N/A")
+    if info.load_1m:
+        t.add_row("Load (1m)", f"{info.load_1m:.2f}")
+    console.print(t)
+    if info.per_cpu:
+        bar = ""
+        for i, p in enumerate(info.per_cpu):
+            bar += f" C{i}:{p:4.0f}% "
+            if (i+1) % 4 == 0:
+                bar += "\n"
+        console.print(bar)
+
+@sys.command()
+def smem():
+    """Show memory info."""
+    info = sysmon.memory()
+    t = Table(box=box.ASCII, title="Memory")
+    t.add_column("Metric"); t.add_column("Value")
+    t.add_row("RAM", f"{sysmon._format_bytes(info.used)} / {sysmon._format_bytes(info.total)} ({info.percent}%)")
+    t.add_row("Available", sysmon._format_bytes(info.available))
+    t.add_row("Swap", f"{sysmon._format_bytes(info.swap_used)} / {sysmon._format_bytes(info.swap_total)} ({info.swap_percent}%)" if info.swap_total else "N/A")
+    console.print(t)
+
+@sys.command()
+@click.argument("path", default=".")
+def sdisk(path):
+    """Show disk usage (like duf)."""
+    info = sysmon.disk_usage(path)
+    if "error" in info:
+        console.print(f"[red]{info['error']}[/red]"); return
+    t = Table(box=box.ASCII, title=f"Disk: {info['path']}")
+    t.add_column("Metric"); t.add_column("Value")
+    t.add_row("Total", sysmon._format_bytes(info["total"]))
+    t.add_row("Used", f"{sysmon._format_bytes(info['used'])} ({info['percent']}%)")
+    t.add_row("Free", sysmon._format_bytes(info["free"]))
+    console.print(t)
+
+@sys.command()
+@click.option("--sort", default="cpu", help="Sort: cpu/mem/pid/name")
+@click.option("--limit", "-l", default=20, type=int, help="Number of processes")
+def sprocs(sort, limit):
+    """List processes (like btop process list)."""
+    procs = sysmon.processes(sort_by=sort, limit=limit)
+    t = Table(box=box.ASCII, title=f"Processes (sorted by {sort})")
+    t.add_column("PID"); t.add_column("Name"); t.add_column("CPU%"); t.add_column("MEM%"); t.add_column("Status")
+    for p in procs:
+        t.add_row(str(p.pid), p.name[:25], f"{p.cpu_percent:.1f}", f"{p.memory_percent:.1f}", p.status)
+    console.print(t)
+
+
+@sys.command()
+@click.option("--interval", "-i", default=2.0, type=float)
+def aanomaly(interval):
+    """AI detect system anomalies."""
+    from sysmon import sysmon; import time
+    console.print(f"[yellow]Sampling for {interval}s...[/yellow]"); time.sleep(0.5)
+    cpu_info = sysmon.cpu(); mem_info = sysmon.memory()
+    metrics = {"cpu_percent": cpu_info.percent, "cpu_freq": cpu_info.freq_current, "cpu_cores": cpu_info.count_logical,
+               "memory_percent": mem_info.percent, "memory_used_gb": mem_info.used / (1024**3),
+               "memory_total_gb": mem_info.total / (1024**3), "processes": len(sysmon.processes())}
+    console.print("[yellow]Analyzing with AI...[/yellow]")
+    result = ai_enhance.detect_anomaly(metrics)
+    anomalies = result.get("anomalies", []) if isinstance(result, dict) else []
+    if not anomalies: console.print("[green]No anomalies.[/green]"); return
+    t = Table(box=box.ASCII, title="Anomalies")
+    t.add_column("Type"); t.add_column("Severity"); t.add_column("Value"); t.add_column("Action")
+    for a in anomalies: t.add_row(a.get("type","?"), a.get("severity","?"), str(a.get("value","?")), a.get("action","")[:40])
+    console.print(t)
+
+@sys.command()
+@click.option("--path", "-p", default=".")
+def aclean(path):
+    """AI suggest disk cleanup actions."""
+    from sysmon import sysmon; from pathlib import Path; import os as _os
+    console.print("[yellow]Scanning...[/yellow]")
+    large = []
+    for d in [".venv", "node_modules", "__pycache__", ".git", "dist", "build", "target"]:
+        fp = _os.path.join(path, d)
+        if _os.path.isdir(fp):
+            try:
+                size = sum(f.stat().st_size for f in Path(fp).rglob("*") if f.is_file()) / (1024**3)
+                if size > 0.05: large.append({"path": d, "size_gb": round(size, 2)})
+            except OSError: continue
+    info = {"path": path, "large_dirs": large}
+    console.print("[yellow]Generating cleanup suggestions...[/yellow]")
+    result = ai_enhance.suggest_cleanup(info)
+    suggestions = result.get("suggestions", []) if isinstance(result, dict) else []
+    if not suggestions: console.print("[green]No suggestions.[/green]"); return
+    t = Table(box=box.ASCII, title="Cleanup Suggestions")
+    t.add_column("Target"); t.add_column("Action"); t.add_column("Size(MB)"); t.add_column("Reason")
+    for s in suggestions: t.add_row(s.get("target","")[:30], s.get("action","")[:15], str(s.get("size_mb","?")), s.get("reason","")[:40])
+    console.print(t)
+
+# === DELTA COMMANDS (side-by-side syntax-highlighted diff viewer) ===
+
+@cli.group()
+def delta():
+    """Syntax-highlighted diff viewer (delta-style)."""
+
+@delta.command()
+@click.argument("file_a")
+@click.argument("file_b", required=False, default=None)
+@click.option("--context", "-c", default=3, type=int)
+@click.option("--stats", "show_stats", is_flag=True)
+def ddiff(file_a, file_b, context, show_stats):
+    """Side-by-side diff between two files."""
+    if show_stats:
+        s = delta_viewer.stats(file_a, file_b)
+        t = Table(box=box.ASCII, title="Diff Stats")
+        t.add_column("Metric"); t.add_column("Value")
+        t.add_row("Insertions", str(s["insertions"])); t.add_row("Deletions", str(s["deletions"]))
+        t.add_row("Files", str(s["files_changed"])); t.add_row("Chunks", str(s["chunks"]))
+        console.print(t); return
+    result = delta_viewer.side_by_side(file_a, file_b, context=context)
+    if isinstance(result, tuple) and len(result) == 2:
+        left, right = result
+        from rich.table import Table as RTable
+        rt = RTable(box=box.SIMPLE, padding=(0, 1), show_header=False, width=120)
+        rt.add_column(f"a/{file_a}", style="red", no_wrap=True)
+        rt.add_column(f"b/{file_b or file_a}", style="green", no_wrap=True)
+        for i in range(max(len(left), len(right))):
+            rt.add_row((left[i] if i < len(left) else "")[:60], (right[i] if i < len(right) else "")[:60])
+        console.print(rt)
+    else:
+        for line in result: console.print(delta_viewer.highlight(line))
+
+@delta.command()
+@click.argument("file_a")
+@click.argument("file_b", required=False, default=None)
+def dstats(file_a, file_b):
+    """Show diff statistics."""
+    s = delta_viewer.stats(file_a, file_b)
+    t = Table(box=box.ASCII, title="Diff Stats")
+    t.add_column("Metric"); t.add_column("Value")
+    t.add_row("Insertions", str(s["insertions"])); t.add_row("Deletions", str(s["deletions"]))
+    t.add_row("Files", str(s["files_changed"])); t.add_row("Chunks", str(s["chunks"]))
+    console.print(t)
+
+@delta.command()
+@click.argument("file_a")
+@click.argument("file_b", required=False, default=None)
+def dexplain(file_a, file_b):
+    """Show diff + AI explanation in one shot."""
+    diff_text = "\n".join(delta_viewer.diff(file_a, file_b))
+    if not diff_text.strip(): console.print("[yellow]No diff.[/yellow]"); return
+    console.print("[bold]Diff:[/bold]")
+    for line in diff_text.split("\n"): console.print(delta_viewer.highlight(line))
+    console.print()
+    console.print("[bold yellow]AI Explanation:[/bold yellow]")
+    console.print(Panel(ai_enhance.explain_diff(diff_text), border_style="green"))
 
 if __name__ == "__main__":
     cli()
