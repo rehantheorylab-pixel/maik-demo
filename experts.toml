@@ -1,0 +1,59 @@
+[experts]
+[experts.code_writer]
+model = "medium"
+description = "Writes code in any language"
+timeout_s = 60
+domains = ["code", "programming", "software"]
+
+[experts.code_reviewer]
+model = "medium"
+description = "Reviews code for bugs and style"
+timeout_s = 45
+domains = ["code", "programming", "review"]
+
+[experts.math_solver]
+model = "medium"
+description = "Solves mathematical problems"
+timeout_s = 60
+domains = ["math", "algebra", "calculus", "statistics"]
+
+[experts.planner]
+model = "small"
+description = "Decomposes complex problems into steps"
+timeout_s = 30
+domains = ["planning", "strategy", "design"]
+
+[experts.explorer]
+model = "flash"
+description = "Explores alternative approaches and edge cases"
+timeout_s = 30
+domains = ["research", "explore", "creative"]
+
+[experts.synthesizer]
+model = "large"
+description = "Merges multiple agent outputs into final answer"
+timeout_s = 60
+domains = ["merge", "synthesize", "final"]
+
+[experts.verifier]
+model = "medium"
+description = "Verifies solutions against requirements"
+timeout_s = 45
+domains = ["verify", "test", "validate"]
+
+[experts.security_auditor]
+model = "large"
+description = "Audits for security vulnerabilities"
+timeout_s = 60
+domains = ["security", "audit", "safety"]
+
+[budget]
+default_total = 100000
+per_agent = 10000
+warning_pct = 0.15
+critical_pct = 0.05
+
+[hierarchy]
+ceo = "CEO"
+executives = ["Strategy", "Engineering", "Quality", "Research", "Operations", "Creative", "Data", "Security", "Infrastructure", "Product"]
+span_of_control = 7
