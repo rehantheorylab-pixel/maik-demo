@@ -20,9 +20,9 @@ No paid API keys required. No credit card. No complex setup. **Run one command f
 
 | OS | One Command (copy & paste) |
 |---|---|
-| **Windows (PowerShell)** | `git clone https://github.com/rehantheorylab-pixel/maik-demo.git; cd maik-demo; git checkout kernel-v3; pip install -r requirements.txt; python -m maik_kernel.cli init` |
-| **Linux** | `git clone https://github.com/rehantheorylab-pixel/maik-demo.git && cd maik-demo && git checkout kernel-v3 && pip install -r requirements.txt && python3 -m maik_kernel.cli init` |
-| **macOS** | `git clone https://github.com/rehantheorylab-pixel/maik-demo.git && cd maik-demo && git checkout kernel-v3 && pip3 install -r requirements.txt && python3 -m maik_kernel.cli init` |
+| **Windows (PowerShell)** | `git clone https://github.com/rehantheorylab-pixel/maik-demo.git; cd maik-demo; pip install -r requirements.txt; python -m maik_kernel.cli init` |
+| **Linux** | `git clone https://github.com/rehantheorylab-pixel/maik-demo.git && cd maik-demo && pip install -r requirements.txt && python3 -m maik_kernel.cli init` |
+| **macOS** | `git clone https://github.com/rehantheorylab-pixel/maik-demo.git && cd maik-demo && pip3 install -r requirements.txt && python3 -m maik_kernel.cli init` |
 
 After install, the moment of truth:
 
