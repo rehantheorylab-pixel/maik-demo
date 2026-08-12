@@ -1,0 +1,27 @@
+flowchart TB
+    subgraph L0[" "]
+        direction TB
+        CLI["CLI — maik solve / maik bench / maik flywheel"] --> EXEC["executor.py — Tiered Cascade Engine"]
+    end
+    EXEC --> ROUTE["router.py — CEO-Aware Routing"]
+    EXEC --> PROV["providers.py — Provider Ladder + Circuit Breakers"]
+    EXEC --> SAFETY["safety.py — Stop-light & Budget Tripwires"]
+    EXEC --> BB["blackboard.py — Shared Working Memory"]
+    EXEC --> MEM["memory.py — L1 / L2 / L3 Memory"]
+    EXEC --> LRN["learn.py — ELO, Postmortems, Contradiction Mining"]
+    EXEC --> COST["Cost Ledger — $ per task, $ per CEO"]
+    ROUTE --> PCACHE[("Pattern Cache (SQLite)")]
+    PCACHE -.seed.- PLIB["pattern_lib.py — The Pattern Library"]
+    PROV --> F1["Free first: local gateway, OpenRouter free"]
+    PROV --> F2["Escalate only: OpenAI / Anthropic / Gemini"]
+    EXEC --> BENCH["bench_truth.py — 26 Ground-Truth Problems"]
+    BENCH --> FLYWHEEL["flywheel.py — Bench → Mine → Reroute → Re-bench"]
+    FLYWHEEL --> ROUTE
+
+    style EXEC fill:#1a7f37,color:#ffffff,stroke:#1a7f37
+    style PLIB fill:#7c3aed,color:#ffffff,stroke:#7c3aed
+    style FLYWHEEL fill:#0e7490,color:#ffffff,stroke:#0e7490
+    style PCACHE fill:#f59e0b,color:#111827,stroke:#f59e0b
+    style CLI fill:#4b5563,color:#ffffff,stroke:#4b5563
+    style PROV fill:#b91c1c,color:#ffffff,stroke:#b91c1c
+    style L0 fill:#ffffff,stroke:#ffffff
