@@ -91,9 +91,9 @@ This is the difference between a chatbot wrapper and an intelligence kernel: **t
 
 ## Philosophy & Credits
 
-> *"I asked AI for help building my ideas and it told me they were impossible — that they already existed. So I built a proof. This is it."*
+> *"I asked AI for help building my ideas, not the architecture or code, just ideas, and it told me they were impossible — that they already existed. So I built a proof. This is it."*
 
-MAIK was designed and authored by **Rehan Muhammad** — an independent developer (12 years old, Pakistan), physics enthusiast, and the creator of the independently-verified Z++ subset-sum solver. Every claim in this README is backed by tests you can run yourself. Don't take the word of an AI; take the word of `pytest`.
+MAIK was designed and authored by **Rehan Muhammad** — an independent developer and the creator of the independently-verified Z++ subset-sum solver. Every claim in this README is backed by tests you can run yourself. Don't take the word of an AI; take the word of `pytest`.
 
 **License:** MIT · **Contributions:** open to serious collaborators
 **Issues & ideas:** open an issue on GitHub — design authority stays with the author.
