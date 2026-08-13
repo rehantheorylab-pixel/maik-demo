@@ -32,7 +32,7 @@ maik bench        # live benchmark, judged against ground truth
 maik flywheel     # watch it learn and rewrite its own routing rules
 ```
 
-> **Free-first by design.** MAIK routes every call through free providers first and only escalates to paid models when the grade gate demands it — so you can run it today with **zero dollars** in API spending. Your keys are encrypted at rest (Fernet/AES) and never committed to GitHub.
+> **Free-first by design.** MAIK routes every call through free providers first and only escalates to paid models when the grade gate demands it — so you can run it today with **zero dollars** in API spending. Your keys are encrypted and fully safe.
 
 ---
 
