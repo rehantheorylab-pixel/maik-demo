@@ -25,3 +25,6 @@ __pycache__/
 live_verify_err.txt
 live_verify_out.txt
 nohup.out
+hard_bench_out.txt
+hard_bench_err.txt
+credit_poll.log

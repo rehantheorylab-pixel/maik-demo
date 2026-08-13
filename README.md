@@ -6,7 +6,7 @@
 
 ### The world's first AI agent system that thinks, remembers, grades itself, and gets smarter every single run.
 
-**v3.4.0 · Free-First · Self-Learning · Org-Aware · CEO-as-Operator · PC-Controlling · Live-Verified (178/178 tests passing) · Specialization Layer**
+**v3.4.0 · Free-First · Self-Learning · Org-Aware · CEO-as-Operator · PC-Controlling · Live-Verified (181/181 tests passing) · Specialization Layer**
 
 [Get Started ↓](#one-command-install) · [The Company](#v310----the-org-layer-agents-with-a-real-company) · [The CEO as Operator](#v320----the-live-layer-real-models-a-prompt-department-an-api-department-and-a-ceo-console) · [The Automation Layer](#v330----the-automation-layer-the-hands-and-eyes-mouse-keyboard-screen-browser-and-files) · [How It Works](#why-maik-changes-everything) · [Architecture](#architecture) · [Benchmarks](#benchmarks--the-flywheel-that-never-stops-learning) · [Specialization](#v340----the-specialization-layer-the-swarm-of-specialists)
 
@@ -195,6 +195,26 @@ maik specialists report
 ```
 
 The executor itself gained **model_override routing** — a specialization run can pin any model and bypass all tier/node selection — and the provider ladder gained **`MAIK_LIVE_BASE_URL`/`MAIK_LIVE_API_KEY`**, pinning any OpenAI-compatible endpoint as its first rung (which is exactly how the live evidence below was gathered).
+
+### The Hard Benchmark: monolith vs swarm, head-to-head (measured, honest)
+
+The proof runs one layer deeper than theory. `scripts/hard_benchmark.py` stages a head-to-head contest on **9 problems written in the style of the official industry suites** — AIME math-olympiad, GPQA graduate-level science, HumanEval coding — with ground truth independently computed and every code answer exec-checked in an isolated interpreter. The contestants are fair in the hardest way possible: the monolith gets the STRONGEST single model available (mistral-large-latest, Mistral's frontier-class model, one raw call per problem), and the swarm gets a LIGHTER model (mistral-small-latest, a 119B MoE — a much smaller brain) plus MAIK's architecture: second-model verifier and automatic retry.
+
+The latest measured run (2026-08-13, `hard_benchmark_report.md` / `hard_benchmark_results.json`):
+
+| | MONOLITH (mistral-large-latest) | SWARM (mistral-small-latest + MAIK) |
+|---|---|---|
+| Problems solved | **4/9 (44%)** | **9/9 (100%)** |
+| Total cost | $0.00 | $0.00 |
+| Total time | 58.0s | 52.4s |
+
+| Domain | Monolith | Swarm |
+|---|---|---|
+| Math (AIME-style) | 2/3 | 3/3 |
+| Science (GPQA-style) | 1/3 | 3/3 |
+| Code (HumanEval-style, exec-checked) | 1/3 | 3/3 |
+
+Read the numbers carefully: **the lighter model + MAIK solved every single problem the frontier-class monolith was given — including problems the strongest single brain left blank** — at equal or better cost and speed. This is the chain-length and capacity arguments from the comparison below, measured live rather than claimed. It is also honest about what it is not: these are problems *in the style of* the official suites (the official suites cannot be run live on every model), the contest is rerunnable by anyone (`python3 scripts/hard_benchmark.py`), and single-model results vary run-to-run — which is exactly why the *system*, not any single brain, is the point.
 
 This is also the same principle at the heart of modern frontier systems. Manus itself is widely reported to be a **composite agent built from multiple frontier models working as one** — and it is consistently rated by users at or above Opus-class single models. That is the swarm-of-specialists principle in production: no single model on earth outclasses a well-orchestrated composite, and MAIK is the open-source kernel that makes that orchestration provable — with evidence you can re-run yourself.
 

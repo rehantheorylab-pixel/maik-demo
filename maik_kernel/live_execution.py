@@ -12,6 +12,7 @@ typical solve costs $0.00.
 """
 
 import json
+import re
 import os
 import threading
 import time
@@ -150,10 +151,11 @@ class LiveExecution:
         ])
         content = resp.get("content", "")
         verdict = "SUSPECT"
-        if content.upper().startswith("VERDICT=OK"):
-            verdict = "OK"
-        elif content.upper().startswith("VERDICT=SUSPECT"):
-            verdict = "SUSPECT"
+        # Find VERDICT= anywhere in the response (models may wrap it in
+        # markdown, preamble text, or code fences) — last occurrence wins.
+        m = re.search(r"verdict\s*[=:]\s*(ok|suspect)", content, re.I)
+        if m:
+            verdict = m.group(1).upper()
         resp["verdict"] = verdict
         return resp
 

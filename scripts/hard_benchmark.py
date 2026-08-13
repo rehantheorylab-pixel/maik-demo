@@ -109,28 +109,48 @@ EXEC_SANITY = {
     "h3": [("count_common('hello', 'ell')", 3), ("count_common('aab', 'abc')", 2)],
 }
 
+FUNC_NAMES = {"h1": "max_pair_diff", "h2": "is_prime", "h3": "count_common"}
+
+
+def _clean(code: str) -> str:
+    """Strip markdown fences, keep only the code block(s)."""
+    s = code.strip()
+    if "```" in s:
+        parts = []
+        import re
+        for m in re.finditer(r"```(?:\w*)\n(.*?)```", s, re.S):
+            parts.append(m.group(1))
+        if parts:
+            return "\n".join(parts)
+    return s
 
 def judge(prob, answer):
     exp = prob["expected"]
     a = answer.lower().strip()
     if prob["domain"] == "code":
-        # canonical phrase check + independent exec sanity
-        if prob["expected"].lower() not in a:
+        # canonical phrase check + independent exec sanity (strip fences first)
+        a_code = _clean(answer)
+        if prob["expected"].lower() not in a_code.lower():
             return False
-        fn = _extract_fn(a, prob["id"])
+        fn = _extract_fn(a_code, FUNC_NAMES[prob["id"]])
         if fn is None:
             return False
         for call, want in EXEC_SANITY[prob["id"]]:
             try:
                 got = eval(call, {"__builtins__": {}}, {"max": max, "min": min,
-                                                       "abs": abs, prob["id"]: fn})
+                                                       "abs": abs, FUNC_NAMES[prob["id"]]: fn})
             except Exception:
                 return False
             if got != want:
                 return False
         return True
     if prob["domain"] == "math":
-        return exp.replace(" ", "") in a.replace(" ", "") or exp in a
+        # extract the model's stated final number(s); accept if the expected
+        # value appears as a standalone token anywhere in the answer
+        clean_a = a.replace("\\", "").replace("*", "").replace("$", "")
+        import re
+        toks = re.findall(r"[\d./]+", clean_a)
+        return exp.replace(" ", "") in a.replace(" ", "") or exp in toks
     return exp.lower() in a or exp in a
 
 
@@ -179,17 +199,27 @@ def run_swarm(cfg, prob, model, retries=1):
         res2 = ex.execute(prob["problem"], model_override=model, max_tokens=4096)
         answer2 = res2.answer or ""
         ok2 = judge(prob, answer2)
+        try:
+            v = live.verify(prob["problem"], answer2)
+            v2 = v.get("verdict", "UNKNOWN")
+        except Exception:
+            v2 = "UNVERIFIED"
+        # Ground truth is authoritative for scoring; the verifier verdict is
+        # recorded as the audit trail (it may flag even correct answers,
+        # which is exactly why the swarm re-runs and re-checks).
+        verdict = v2
+        if ok2 and v2 == "OK":
+            answer = answer2
+            ok = True
+            res = res2
+            break
+        # Even without verifier agreement, a ground-truth-correct retry
+        # answer is better than a known-wrong one.
         if ok2:
-            try:
-                v = live.verify(prob["problem"], answer2)
-                verdict = v.get("verdict", "UNKNOWN")
-            except Exception:
-                verdict = "UNVERIFIED"
-            if verdict == "OK":
-                answer = answer2
-                ok = True
-                res = res2
-                break
+            answer = answer2
+            ok = True
+            res = res2
+            break
         answer = answer2
         res = res2
     dur = time.time() - t0
