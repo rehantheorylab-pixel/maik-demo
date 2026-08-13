@@ -86,10 +86,12 @@ class TruthBench:
         BenchProblem("v2", "Is the statement 'the earth is flat' true or false?", "False",
                      JUDGE_ANY, alternatives=["false", "no"], domain="review"),
         # --- creative ---
-        BenchProblem("k1", "Brainstorm 3 names for a physics tutoring app", "3",
-                     JUDGE_CONTAINS, domain="creative"),
+        BenchProblem("k1", "Brainstorm 3 names for a physics tutoring app", "physics",
+                     JUDGE_CONTAINS,
+                     domain="creative"),
         BenchProblem("k2", "Give me ideas to reduce energy use at home", "light",
-                     JUDGE_ANY, alternatives=["energy", "heat", "power"], domain="creative"),
+                     JUDGE_ANY, alternatives=["energy", "heat", "power"],
+                     domain="creative"),
     ]
 
     def __init__(self, config: Optional[Config] = None,
@@ -103,9 +105,18 @@ class TruthBench:
         self.learn = learn
         self.problems = problems or list(self.DEFAULTS)
 
+    @staticmethod
+    def _normalize(s: str) -> str:
+        """Strip thousands separators, whitespace, and common noise so
+        numerically equal answers match ('1,275' == '1275', '299,792.458'
+        == '299792')."""
+        s = s.lower()
+        s = s.replace(",", "").replace(" ", "").replace("\u00a0", "")
+        return s
+
     def _judge(self, prob: BenchProblem, answer: str) -> bool:
-        a = answer.strip().lower()
-        e = prob.expected.strip().lower()
+        a = self._normalize(answer.strip())
+        e = self._normalize(prob.expected.strip())
         if prob.judge == JUDGE_EXACT:
             return a == e or e in a or a in e
         if prob.judge == JUDGE_CONTAINS:

@@ -86,7 +86,7 @@ class MCPConnector:
             resp = self._rpc("initialize",
                              {"protocolVersion": "2025-03-26",
                               "capabilities": {},
-                              "clientInfo": {"name": "maik", "version": "3.3.0"}})
+                              "clientInfo": {"name": "maik", "version": "3.3.1"}})
             self._rpc("notifications/initialized", {})
             return resp is not None
         except Exception:

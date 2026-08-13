@@ -144,7 +144,7 @@ class Config:
 
     def __init__(self, mode: ProfileMode = ProfileMode.FULL, friction: int = 5,
                  ceos: Optional[List[CEOProfile]] = None):
-        self.version = "3.3.0"
+        self.version = "3.3.1"
         self.mode = mode
         self.friction = FrictionDial(friction)
         self._ceos = ceos if ceos is not None else _default_ceos()
@@ -223,7 +223,7 @@ class Config:
             d = json.loads(text)
         except json.JSONDecodeError as e:
             raise ConfigError(f"Invalid config JSON: {e}")
-        if d.get("version") != "3.3.0":
+        if d.get("version") != "3.3.1":
             raise ConfigError(f"Unsupported config version: {d.get('version')}")
         mode = ProfileMode(d.get("mode", "full"))
         ceos = [

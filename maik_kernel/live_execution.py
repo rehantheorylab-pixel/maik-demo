@@ -27,6 +27,17 @@ FREE_TIER_MODELS = {
     "large": "deepseek/deepseek-r1:free",
 }
 
+# Override every tier mapping at once for a custom deployment (e.g. the
+# sandbox LLM proxy used for live validation). Values must be valid
+# litellm strings reachable by the provider ladder — plain model ids work
+# when the `openai` provider entry is enabled (it prefixes them itself).
+ENV_TIER_MODEL_OVERRIDES = {
+    "flash": os.environ.get("MAIK_LIVE_MODEL_FLASH", ""),
+    "small": os.environ.get("MAIK_LIVE_MODEL_SMALL", ""),
+    "medium": os.environ.get("MAIK_LIVE_MODEL_MEDIUM", ""),
+    "large": os.environ.get("MAIK_LIVE_MODEL_LARGE", ""),
+}
+
 
 def _resolve_free_model(tier: str) -> str:
     """Map a tier to its free-registry default (litellm string).
@@ -36,6 +47,9 @@ def _resolve_free_model(tier: str) -> str:
     """
     if "/" in tier or tier not in FREE_TIER_MODELS:
         return tier
+    override = ENV_TIER_MODEL_OVERRIDES.get(tier, "")
+    if override:
+        return override
     return FREE_TIER_MODELS[tier]
 
 
@@ -52,6 +66,13 @@ class LiveExecution:
             if self._ladder is None:
                 self._ladder = ProviderLadder()
             return self._ladder
+
+    # ------------------------------------------------------------ tier maps
+    @staticmethod
+    def resolve_tier(tier: str) -> str:
+        """Map a tier name to its live model, honoring per-deployment
+        overrides (MAIK_LIVE_MODEL_FLASH etc.) set in the environment."""
+        return _resolve_free_model(tier)
 
     # ------------------------------------------------------------ keys
     def key_inventory(self) -> dict:

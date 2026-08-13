@@ -167,7 +167,7 @@ class Executor:
                 # ProviderLadder.call(model, messages, ...); a per-node model
                 # binding overrides the tier default, otherwise the tier name
                 # is passed so the ladder picks a live provider model.
-                effective = model if model else tier.value
+                effective = model if model else self._live.resolve_tier(tier.value)
                 resp = self.ladder.call(effective, messages,
                                         max_tokens=max_tokens)
             except RuntimeError as e:  # noqa: PERF203
