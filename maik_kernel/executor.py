@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 
 from .blackboard import Blackboard
 from .config import Config, ModelTier
+from .executor_org import OrgBridge
 from .providers import ProviderLadder
 from .router import Router, RoutingDecision
 from .safety import SafetyGate
@@ -97,12 +98,14 @@ class Executor:
                ModelTier.LARGE: None}
 
     def __init__(self, config: Config, ladder: Optional[ProviderLadder] = None,
-                 pattern_lib: Optional["PatternLibrary"] = None):
+                 pattern_lib: Optional["PatternLibrary"] = None,
+                 org_bridge: Optional[OrgBridge] = None):
         self.config = config
         self.ladder = ladder or ProviderLadder()
         self.blackboard = Blackboard()
         self.safety = SafetyGate(config)
         self.pattern_lib = pattern_lib
+        self.org = org_bridge  # Phase H org-aware layer (optional)
         self._results: List[ExecutionResult] = []
 
     def execute(self, problem: str, max_tokens: int = 2048) -> ExecutionResult:
@@ -115,9 +118,15 @@ class Executor:
         # safety: budget tripwire check before spend
         self.safety.check(ceo)
 
+        # Phase H: select an org worker node if the org layer is active
+        worker = (self.org.select_worker(decision.problem_type,
+                                         decision.ceo_domain)
+                  if self.org and self.org.active else None)
+
         tier = decision.tier
         escalations = 0
         last = None
+        run_model = None
         # Pattern Library v0: hot-swap specialist reasoning patterns in place
         matched = self.pattern_lib.match(problem) if self.pattern_lib else []
         if matched:
@@ -133,17 +142,32 @@ class Executor:
             if self.config.budgets.remaining(ceo) <= 0:
                 notes.append({"agent": "safety", "event": "budget_denied", "tier": tier.value})
                 break
+            # Phase H: org system prompt (self-aware) when a worker is selected,
+            # else the classic single-agent system prompt
+            if worker is not None:
+                sys_content = self.org.build_system_prompt(worker,
+                                                           decision.problem_type)
+                if pattern_prefix:
+                    sys_content += "\n\n" + pattern_prefix
+                model = self.org.resolve_model(worker.uid, tier)
+                run_model = model
+            else:
+                sys_content = (f"You are the {decision.expert} specialist under "
+                               f"CEO {ceo.name} ({decision.problem_type} domain). "
+                               f"Answer precisely. Problem difficulty: {decision.difficulty}." +
+                               (" " + pattern_prefix if pattern_prefix else ""))
+                model = None
             messages = [
-                {"role": "system",
-                 "content": (f"You are the {decision.expert} specialist under CEO {ceo.name} "
-                             f"({decision.problem_type} domain). Answer precisely. "
-                             f"Problem difficulty: {decision.difficulty}." +
-                             (" " + pattern_prefix if pattern_prefix else ""))},
+                {"role": "system", "content": sys_content},
                 {"role": "user", "content": problem},
             ]
             try:
-                resp = self.ladder.call(tier.value.replace("_", "-") if False else tier.value,
-                                        messages, max_tokens=max_tokens)
+                # ProviderLadder.call(model, messages, ...); a per-node model
+                # binding overrides the tier default, otherwise the tier name
+                # is passed so the ladder picks a live provider model.
+                effective = model if model else tier.value
+                resp = self.ladder.call(effective, messages,
+                                        max_tokens=max_tokens)
             except RuntimeError as e:  # noqa: PERF203
                 last = ExecutionResult.__new__(ExecutionResult)
                 notes.append({"agent": "provider", "event": "all_providers_failed", "error": str(e)[:200]})
@@ -156,9 +180,12 @@ class Executor:
             if grade >= self.config.friction.min_confidence:
                 self.config.budgets.spend(ceo.domain, resp["prompt_tokens"] + resp["completion_tokens"],
                                           resp["cost_usd"])
+                if self.org and self.org.active and worker is not None:
+                    self.org.note_run(worker.uid, run_id, problem, resp["content"])
                 return self._finalize(None, run_id, problem, decision, resp["content"],
                                       min(1.0, grade + 0.1), tier, escalations, notes, t0,
-                                      provider=resp["provider"], model=resp["model_used"],
+                                      provider=resp["provider"],
+                                      model=run_model or resp["model_used"],
                                       pt=resp["prompt_tokens"], ct=resp["completion_tokens"],
                                       usd=resp["cost_usd"])
             notes.append({"agent": "cascade", "event": "grade_low",
@@ -183,10 +210,12 @@ class Executor:
             self.config.budgets.spend(ceo.domain,
                                       last_resp["prompt_tokens"] + last_resp["completion_tokens"],
                                       last_resp["cost_usd"])
+        if self.org and self.org.active and worker is not None and content:
+            self.org.note_run(worker.uid, run_id, problem, content)
         return self._finalize(None, run_id, problem, decision, content,
                               min(1.0, grade), tier or decision.tier, escalations, notes, t0,
                               provider=(last_resp or {}).get("provider", "none"),
-                              model=(last_resp or {}).get("model_used", "none"),
+                              model=run_model or (last_resp or {}).get("model_used", "none"),
                               pt=(last_resp or {}).get("prompt_tokens", 0),
                               ct=(last_resp or {}).get("completion_tokens", 0),
                               usd=(last_resp or {}).get("cost_usd", 0.0))
@@ -224,3 +253,7 @@ class Executor:
 
     def total_cost(self) -> float:
         return sum(r.cost_usd for r in self._results)
+
+    def org_summary(self) -> dict:
+        """Phase H: summary of the org layer (empty dict when inactive)."""
+        return self.org.summary() if self.org else {}

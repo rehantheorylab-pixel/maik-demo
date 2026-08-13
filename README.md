@@ -6,9 +6,9 @@
 
 ### The world's first AI agent system that thinks, remembers, grades itself, and gets smarter every single run.
 
-**v3.0.0 · Free-First · Self-Learning · Battle-Tested (52/52 tests passing)**
+**v3.1.0 · Free-First · Self-Learning · Org-Aware · Battle-Tested (109/109 tests passing)**
 
-[Get Started ↓](#one-command-install) · [How It Works](#why-maik-changes-everything) · [Architecture](#architecture) · [Benchmarks](#benchmarks--the-flywheel-that-never-stops-learning)
+[Get Started ↓](#one-command-install) · [The Company](#v310----the-org-layer-agents-with-a-real-company) · [How It Works](#why-maik-changes-everything) · [Architecture](#architecture) · [Benchmarks](#benchmarks--the-flywheel-that-never-stops-learning)
 
 </div>
 
@@ -24,6 +24,8 @@ No paid API keys required. No credit card. No complex setup. **Run one command f
 | **Linux** | `git clone https://github.com/rehantheorylab-pixel/maik-demo.git && cd maik-demo && pip install -r requirements.txt && python3 -m maik_kernel.cli init` |
 | **macOS** | `git clone https://github.com/rehantheorylab-pixel/maik-demo.git && cd maik-demo && pip3 install -r requirements.txt && python3 -m maik_kernel.cli init` |
 
+> **Shortcut on Windows:** `Set-Alias maik 'python -m maik_kernel.cli'` — then every command below becomes just `maik ...` (add it to your PowerShell profile to keep it forever).
+
 After install, the moment of truth:
 
 ```powershell
@@ -33,6 +35,27 @@ maik flywheel     # watch it learn and rewrite its own routing rules
 ```
 
 > **Free-first by design.** MAIK routes every call through free providers first and only escalates to paid models when the grade gate demands it — so you can run it today with **zero dollars** in API spending. Your keys are encrypted and fully safe.
+
+## v3.1.0 — The Org Layer: Agents with a Real Company
+
+MAIK v3.1.0 adds a **real company** on top of the intelligence engine. Your agents now have an org chart, IDs, managers, notebooks, chat threads, scoped permissions, and their own system prompts. The CEO acts like a real CEO: it gives commands to managers, managers manage agents, and every agent works within its system prompt — knowing who it is, who its manager is, and exactly what it may touch.
+
+**Every agent is self-aware.** Each node's resolved prompt contains a SELF block with its identity, role, level, manager chain, CEO, sibling agents, capabilities, and the current UTC time — time-aware, never token-obsessed. And because prompts are generated dynamically at runtime, **every feature ships with its prompt rules**: threads, notebooks, MCP tools, and everything added later is automatically documented inside each agent's prompt.
+
+**The chain of prompt authorship** mirrors a real company: you write the CEO prompt, the CEO writes manager prompts, managers write agent prompts, agents write subagent prompts — each guided by built-in prompt quality guidelines (`maik org prompt guide`).
+
+```powershell
+maik org status                           # see the whole company: hierarchy, chains, model bindings
+maik org add manager <ceo-uid> "Rehan-Ops" engineering
+maik org add agent <ceo-uid> "CodeWriter" code_writer --allow-commands --allow-files
+maik org bind <node-uid> anthropic/claude-haiku   # pin a specific model to a node
+maik org prompt guide --role code_writer          # what a great agent prompt contains
+maik org prompt view --node "Chief Code"          # the exact prompt Chief Code sees
+maik org notebook write CodeWriter public --text "deployed via CLI"
+maik org deploy probe aider                       # probe any external coding CLI (VS Code, Cursor, aider, codex...)
+maik org thread create --topic "API choice" --owner <uid>
+maik org thread veto --thread-id <id> --owner <uid> --reason "cost too high for this task"
+```
 
 ---
 
@@ -51,8 +74,15 @@ Every AI agent framework on the market today shares one fatal flaw: **they ask a
 | ✅ **Cost ledger per CEO and per task.** You see exactly where every cent went. Budget tripwires stop runaway spending. | ❌ Cost tracking that lives in your credit card statement |
 | ✅ **L1/L2/L3 memory + ThoughtVDB.** Working context, persistent episodes, distilled long-term facts, similarity search. MAIK remembers what worked last week. | ❌ Amnesia by design — nothing persists between runs |
 | ✅ **Executive Council governance.** 12 specialist CEOs, individual budgets, friction dial (0–10), stop-light safety gates. | ❌ Flat agent swarms with no hierarchy, no budgets, no safety stops |
+| ✅ **Real org chart (v3.1.0).** Managers manage agents, agents delegate to subagents, CEO oversight up the chain of command. Every node knows who it is, who its manager is, who the CEO is. | ❌ Agents that don't know where they sit or who reports to whom |
+| ✅ **System prompt engine with 16 role templates.** code_writer, code_tester, code_reviewer, code_debugger, idea_verifier, idea_generator, research_explorer, synthesizer, verifier, and more — merged with CEO default, per-node edits, and a SELF-awareness block (identity, role, manager, siblings, capabilities, UTC time). | ❌ Generic one-size-fits-all prompts; agents that don't know their own role |
+| ✅ **WhatsApp-style team threads with real governance.** Post, reply, hold, debate, vote, consensus — and CEO/manager veto that **requires a written reason**, with exactly one counter-argument allowed before the debate re-opens. | ❌ Chat rooms where anyone can close anything; veto without accountability |
+| ✅ **Dual public/hidden notebooks per agent.** The public notebook is the team WhatsApp; the hidden one is private to the agent — readable only by its manager chain (CEO oversight). Persisted as JSONL. | ❌ Shared context that is either fully public or fully invisible |
+| ✅ **Scoped permissions.** Agents know exactly what they may touch: one file, a project folder, or the full computer. Shell/file/screen/browser powers granted per node; every command runs dry-run-first. | ❌ Unrestricted shell access or none at all |
+| ✅ **Model binding per node.** Pin any provider/model to any node — cheap models for subagents, flagship models for the CEO. Free-tier default, paid escalation per node. | ❌ One hardcoded model for every agent |
+| ✅ **External CLI + MCP integration.** Spawn aider, opencode, codex, claude-code, gemini-cli and every MCP server (filesystem, browser, shell) as tool plugins. | ❌ Frameworks locked inside their own sandbox |
 
-**The numbers speak:** 15 core modules, 9 test suites, 26 ground-truth benchmark problems, deterministic offline mode for zero-key testing, and a codebase where every phase (A through G) was completed and verified before moving on.
+**The numbers speak:** 15 core modules, 9 test suites, 26 ground-truth benchmark problems, deterministic offline mode for zero-key testing, and a codebase where every phase (A through H) was completed and verified before moving on.
 
 ---
 
@@ -64,7 +94,7 @@ MAIK is a **backend-first orchestration kernel**. Nothing in the core imports a 
 
 | Layer | Modules | What It Does |
 |---|---|---|
-| **Gateway** | `cli.py` | `maik solve`, `bench`, `status`, `flywheel`, `init` — one command for everything |
+| **Gateway** | `cli.py` | `maik solve`, `bench`, `status`, `flywheel`, `init` — plus the full `maik org` family (status/add/bind/prompt/notebook/deploy/thread) |
 | **Execution** | `executor.py` + `safety.py` | Tiered cascade: solve cheap → grade → escalate. Stop-light gates and budget tripwires on every task |
 | **Routing** | `router.py` + `pattern_lib.py` | CEO-aware routing, persistent SQLite pattern cache, the Pattern Library with hot-swap specialist adapters |
 | **Providers** | `providers.py` + `stub_provider.py` | Free-first ladder, independent circuit breakers per provider, deterministic stub for offline testing |
@@ -72,6 +102,10 @@ MAIK is a **backend-first orchestration kernel**. Nothing in the core imports a 
 | **Learning** | `learn.py` + `flywheel.py` | ELO ratings, postmortems, contradiction mining, automatic reroute-rule generation, self re-benchmarking |
 | **Benchmark** | `bench_truth.py` | 26 ground-truth problems with automated correctness judging — MAIK grades itself honestly |
 | **Governance** | `config.py` + `blackboard.py` | 12-CEO Executive Council, per-CEO budgets, friction dial, thread-safe shared memory |
+| **Org (v3.1.0)** | `org_chart.py` + `model_binding.py` | Hierarchy engine (CEO→manager→agent→subagent), persistent bindings, `from_spec` free-form orgs |
+| **Prompts (v3.1.0)** | `prompt_system.py` | 16 role templates, level guidelines, 4-layer resolution + SELF block + feature manuals |
+| **Threads (v3.1.0)** | `threads.py` + `notebooks.py` | Chat threads with debate/veto/counter-argue/consensus; dual public/hidden notebooks |
+| **Tools (v3.1.0)** | `integrations.py` + `cli_deployer.py` | MCP JSON-RPC connector, server registry, external CLI probe/spawn |
 | **Secrets** | `secrets.py` | Fernet-encrypted `.env` at rest; keys never appear in the repo, ever |
 
 ---

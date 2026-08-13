@@ -1,27 +1,24 @@
-<<<<<<< HEAD
+# Secrets & data — NEVER commit
 .env
 *.key
 *.key.*
+*.pem
 learn/
 memory/
 patterns/
 flywheel.log
 reroute_rules.json
 *.db-journal
-*.pem
+pattern_cache.db
+*.db
+
+# Build artifacts
+build/
+dist/
+exe/
+*.egg-info/
+*.spec
 __pycache__/
 *.pyc
 .pytest_cache/
-build/
-dist/
-*.egg-info/
-pattern_cache.db
-*.db
 .DS_Store
-=======
-build/
-exe/
-__pycache__/
-*.pyc
-*.spec
->>>>>>> push-tok/master
