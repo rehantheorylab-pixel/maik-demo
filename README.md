@@ -6,9 +6,9 @@
 
 ### The world's first AI agent system that thinks, remembers, grades itself, and gets smarter every single run.
 
-**v3.1.0 · Free-First · Self-Learning · Org-Aware · Battle-Tested (109/109 tests passing)**
+**v3.2.0 · Free-First · Self-Learning · Org-Aware · CEO-as-Operator · Battle-Tested (146/146 tests passing)**
 
-[Get Started ↓](#one-command-install) · [The Company](#v310----the-org-layer-agents-with-a-real-company) · [How It Works](#why-maik-changes-everything) · [Architecture](#architecture) · [Benchmarks](#benchmarks--the-flywheel-that-never-stops-learning)
+[Get Started ↓](#one-command-install) · [The Company](#v310----the-org-layer-agents-with-a-real-company) · [The CEO as Operator](#v320----the-live-layer-real-models-a-prompt-department-an-api-department-and-a-ceo-console) · [How It Works](#why-maik-changes-everything) · [Architecture](#architecture) · [Benchmarks](#benchmarks--the-flywheel-that-never-stops-learning)
 
 </div>
 
@@ -57,6 +57,23 @@ maik org thread create --topic "API choice" --owner <uid>
 maik org thread veto --thread-id <id> --owner <uid> --reason "cost too high for this task"
 ```
 
+## v3.2.0 — The Live Layer: Real Models, a Prompt Department, an API Department, and a CEO Console
+
+v3.1.0 gave MAIK a company. v3.2.0 makes that company **operate in the real world** — with live models, dedicated management departments, and a CEO console that puts the operator in direct control of the machine.
+
+**Real execution with an anti-hallucination verifier (`live_execution.py`).** When keys are configured, MAIK stops being a stub and starts making real LLM calls through the same free-first ladder — with independent verifiers. After an answer is accepted, a *different* model grades it on its own; a `SUSPECT` verdict forces escalation instead of silently shipping a hallucination. Two models against each other, exactly as the original thesis described.
+
+**The Prompt Management Agent (`prompt_management.py`) — the CEO's prompt department.** Prompt quality is the single biggest driver of agent quality, so MAIK now has a dedicated agent whose entire job is prompts: it *writes* prompts from role + mission (with the quality checklist baked in), *grades* every prompt against 8 weighted criteria (identity, role clarity, mission, constraints, output format, error handling, coordination, tone), *auto-upgrades* weak prompts by injecting the missing elements until they pass the bar, and keeps a full *history* of every edit — so no prompt is ever lost.
+
+**The API/Model Management Agent (`api_management.py`) — the finance department.** Every node gets a token budget AND a dollar budget with an 80% tripwire. The department enforces per-provider rate limits with burst control, and when a provider saturates or its circuit opens, it emits the reroute advice so stressed nodes move to healthy providers — before money burns, not after. `maik status` shows a live dashboard of per-node spend and remaining quotas.
+
+**The CEO Access Layer (`ceo_access.py`) — the CEO as operator.** The CEO is no longer just a name in the org chart. It is a console: run PowerShell (Windows) or shell commands, create files with path-escape protection, probe and spawn external coding CLIs (aider, opencode, codex, claude-code, gemini-cli, VS Code, Cursor...), connect to any MCP server and call its tools — every action dry-run first, every action written to an immutable audit trail, and every action gated by the org chart's power system so permissions can never be quietly exceeded.
+
+```powershell
+maik solve "find prime factors of 9999991"   # now runs live when keys are present
+maik status                                  # org health + API spend dashboard
+```
+
 ---
 
 ## Why MAIK Changes Everything
@@ -81,8 +98,12 @@ Every AI agent framework on the market today shares one fatal flaw: **they ask a
 | ✅ **Scoped permissions.** Agents know exactly what they may touch: one file, a project folder, or the full computer. Shell/file/screen/browser powers granted per node; every command runs dry-run-first. | ❌ Unrestricted shell access or none at all |
 | ✅ **Model binding per node.** Pin any provider/model to any node — cheap models for subagents, flagship models for the CEO. Free-tier default, paid escalation per node. | ❌ One hardcoded model for every agent |
 | ✅ **External CLI + MCP integration.** Spawn aider, opencode, codex, claude-code, gemini-cli and every MCP server (filesystem, browser, shell) as tool plugins. | ❌ Frameworks locked inside their own sandbox |
+| ✅ **Live execution + independent verifier (v3.2.0).** Real answers from real models, then a *second, different* model grades them — a SUSPECT verdict forces escalation. Two models against each other: hallucinations caught by the system, not the user. | ❌ "Answer + believe it" architectures with no verification loop |
+| ✅ **Prompt Management Agent (v3.2.0).** A dedicated agent that writes, grades, and auto-upgrades prompts for every other agent — 8 weighted quality criteria, version history, never-lose-an-edit. Best prompt = best agent = best CLI in the world. | ❌ Prompts hand-written once and never measured or improved |
+| ✅ **API Management Agent (v3.2.0).** Per-node token AND dollar budgets with 80% tripwire, client-side rate limits with burst control, automatic fallback switching, live spend dashboard — the department that watches the money before you spend it. | ❌ Cost awareness that arrives with your credit card bill |
+| ✅ **CEO Access Layer (v3.2.0).** The CEO is the operator: PowerShell commands, file creation with path-escape protection, external CLI deployment, MCP tool calls — dry-run first, every action audited, every action power-gated by the org chart. | ❌ Agents with either no real access or unlimited, ungated access |
 
-**The numbers speak:** 15 core modules, 9 test suites, 26 ground-truth benchmark problems, deterministic offline mode for zero-key testing, and a codebase where every phase (A through H) was completed and verified before moving on.
+**The numbers speak:** 19 core modules, 13 test suites, 26 ground-truth benchmark problems, deterministic offline mode for zero-key testing, and a codebase where every phase (A through L) was completed and verified before moving on.
 
 ---
 
@@ -106,6 +127,10 @@ MAIK is a **backend-first orchestration kernel**. Nothing in the core imports a 
 | **Prompts (v3.1.0)** | `prompt_system.py` | 16 role templates, level guidelines, 4-layer resolution + SELF block + feature manuals |
 | **Threads (v3.1.0)** | `threads.py` + `notebooks.py` | Chat threads with debate/veto/counter-argue/consensus; dual public/hidden notebooks |
 | **Tools (v3.1.0)** | `integrations.py` + `cli_deployer.py` | MCP JSON-RPC connector, server registry, external CLI probe/spawn |
+| **Live Execution (v3.2.0)** | `live_execution.py` | Real LLM calls via encrypted keys; free-first ladder; independent cross-model verifier that flags SUSPECT answers and forces escalation |
+| **Prompt Mgmt (v3.2.0)** | `prompt_management.py` | The prompt department: writes, grades (8 criteria), auto-upgrades to the quality bar, and version-histories every prompt |
+| **API Mgmt (v3.2.0)** | `api_management.py` | Per-node token+USD budgets with 80% tripwire, rate limits + burst control, fallback switching, live spend dashboard |
+| **CEO Console (v3.2.0)** | `ceo_access.py` | CEO as operator: PowerShell/shell, file creation, CLI deployment, MCP tool calls — dry-run first, fully audited, powers-gated |
 | **Secrets** | `secrets.py` | Fernet-encrypted `.env` at rest; keys never appear in the repo, ever |
 
 ---

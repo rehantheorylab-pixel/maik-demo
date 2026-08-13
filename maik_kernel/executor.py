@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional
 from .blackboard import Blackboard
 from .config import Config, ModelTier
 from .executor_org import OrgBridge
+from .live_execution import LiveExecution
 from .providers import ProviderLadder
 from .router import Router, RoutingDecision
 from .safety import SafetyGate
@@ -106,6 +107,7 @@ class Executor:
         self.safety = SafetyGate(config)
         self.pattern_lib = pattern_lib
         self.org = org_bridge  # Phase H org-aware layer (optional)
+        self._live = LiveExecution()  # Phase I live execution + verifier
         self._results: List[ExecutionResult] = []
 
     def execute(self, problem: str, max_tokens: int = 2048) -> ExecutionResult:
@@ -178,16 +180,47 @@ class Executor:
                 self.pattern_lib.record(matched[0].name, grade >= self.config.friction.min_confidence)
             self.blackboard.put(f"run:{run_id}:answer", resp["content"], agent="executor")
             if grade >= self.config.friction.min_confidence:
-                self.config.budgets.spend(ceo.domain, resp["prompt_tokens"] + resp["completion_tokens"],
-                                          resp["cost_usd"])
-                if self.org and self.org.active and worker is not None:
-                    self.org.note_run(worker.uid, run_id, problem, resp["content"])
-                return self._finalize(None, run_id, problem, decision, resp["content"],
-                                      min(1.0, grade + 0.1), tier, escalations, notes, t0,
-                                      provider=resp["provider"],
-                                      model=run_model or resp["model_used"],
-                                      pt=resp["prompt_tokens"], ct=resp["completion_tokens"],
-                                      usd=resp["cost_usd"])
+                # Phase I: live anti-hallucination — a second independent model
+                # verifies the answer; a SUSPECT verdict drops confidence so the
+                # cascade escalates instead of trusting a single model.
+                verifier_ok = True
+                verifier_verdict = "OK"
+                try:
+                    vr = self._live.verify(problem, resp["content"])
+                    verifier_verdict = vr.get("verdict", "OK")
+                    notes.append({"agent": "verifier", "event": "verdict",
+                                  "verdict": verifier_verdict,
+                                  "provider": vr.get("provider", "")})
+                    verifier_ok = verifier_verdict == "OK"
+                except Exception:  # noqa: BLE001 — verifier never blocks
+                    pass
+                if not verifier_ok and escalations < self.config.friction.max_escalations:
+                    notes.append({"agent": "verifier", "event": "suspect_escalate"})
+                    # fall through: let the normal escalation machinery try the
+                    # next tier ONCE more with the suspect answer behind us
+                    last_resp = resp
+                    if escalations >= self.config.friction.max_escalations:
+                        break
+                    next_tier = self.TIER_UP[tier]
+                    if next_tier is None:
+                        break
+                    if self.config.budgets.cost_remaining(ceo) <= 0:
+                        notes.append({"agent": "safety", "event": "cost_ceiling", "tier": tier.value})
+                        break
+                    tier = next_tier
+                    escalations += 1
+                    continue
+                else:
+                    self.config.budgets.spend(ceo.domain, resp["prompt_tokens"] + resp["completion_tokens"],
+                                              resp["cost_usd"])
+                    if self.org and self.org.active and worker is not None:
+                        self.org.note_run(worker.uid, run_id, problem, resp["content"])
+                    return self._finalize(None, run_id, problem, decision, resp["content"],
+                                          min(1.0, grade + 0.1), tier, escalations, notes, t0,
+                                          provider=resp["provider"],
+                                          model=run_model or resp["model_used"],
+                                          pt=resp["prompt_tokens"], ct=resp["completion_tokens"],
+                                          usd=resp["cost_usd"])
             notes.append({"agent": "cascade", "event": "grade_low",
                           "grade": grade, "tier": tier.value})
             last_resp = resp
@@ -204,6 +237,8 @@ class Executor:
             escalations += 1
 
         # best-effort return of the last attempt
+        if last_resp is None and resp.get("content"):
+            last_resp = resp
         content = last_resp["content"] if last_resp and "content" in last_resp else ""
         grade = _grade_answer(problem, content)
         if last_resp:
