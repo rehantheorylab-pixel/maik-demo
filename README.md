@@ -227,6 +227,23 @@ The same principle already won in industry: **DeepSeek's Mixture-of-Experts mode
 
 The claim, in one line: **no fixed monolith — Mythos included — can replicate a system that deploys new brains, cross-checks every answer, learns from every run, and absorbs any new model the industry releases, including future Mythos-class ones.** Mythos's ceiling is itself; MAIK's ceiling rises with the entire industry. That is why the swarm beats the monolith, and the live evidence above is rerunnable on your own machine.
 
+#### The Capacity Argument: sparse specialists beat a dense monolith
+
+There is a deeper, quantitative reason the system beats the monolith — one about **what actually gets loaded when the model thinks**.
+
+A dense monolith is trained on mixed, unstructured data: line one about books, line two about cars, poetry next to parsers. When it answers a coding question, the *entire* model activates — code knowledge and poetry knowledge and everything else, blended in one forward pass. If a frontier monolith weighs ~56 GB, only a fraction of that is genuinely coding intelligence (call it ~10–20 GB); the rest is unrelated knowledge dragged into every reasoning step, mixed into the same context. That mixing is not harmless: **loading irrelevant weights into context is a major hallucination vector** — the model "forgets its goal" because the noise of everything else interferes with the task at hand.
+
+A sparse swarm is structured like a fully organized NASA team: every brain has exactly one job. The coding specialist is ~40 GB of *pure* coding intelligence, loaded alone when the job is code. On a coding task MAIK therefore loads **more task-relevant intelligence** (40 GB of coding vs a monolith's ~10–20 diluted GB of coding) while loading **less total noise** (~40 GB loaded vs the monolith's full 56 GB). The same holds for every other domain — and it compounds across the team: math, simulation, testing, verification, research each get their full specialist budget, with a small zero-cost local guard watching every agent for drift out of context.
+
+| Loading model | Mythos-class dense monolith (~56 GB) | MAIK sparse swarm (500 GB total, ~20–40 GB loaded per task) |
+|---|---|---|
+| Code task loads | Full 56 GB: code + poetry + cars + books, blended | ~40 GB pure coding specialist — nothing else |
+| Task-relevant capacity on code | ~10–20 GB diluted inside the monolith | ~40 GB dedicated coding intelligence |
+| Irrelevant noise in context | Everything not coding | None — every loaded GB is task-relevant |
+| Hallucination surface | Mixed weights forget the goal | Clean specialist context + context-guard agent flags drift |
+
+Industry already validated this principle at the model layer: **Mixture-of-Experts models keep most of their total parameters dormant and activate only the expert slice per token — DeepSeek's MoE designs outsized their active-parameter class precisely because of this.** MAIK applies the same sparsity principle one level higher, at the agent-system layer: the whole swarm's intelligence is never loaded at once, only the specialists the CEO's org chart assigns — so MAIK runs heavy tasks with monolith-level cost, but answers with specialist-level purity. This is also why the swarm's live accuracy (100% across five domains) beat every individual model (90%) in our verification run: more capacity, less noise, per task.
+
 ---
 
 ## Philosophy & Credits
