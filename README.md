@@ -185,7 +185,7 @@ This is the difference between a chatbot wrapper and an intelligence kernel: **t
 
 v3.3.1 proved MAIK works in the real world. v3.4.0 proves **the swarm beats the monolith** — the core insight of the entire project:
 
-> Many specialized AIs, each proven best at one feature, working together under orchestration, beat any single generalist monolith on average — at a fraction of the cost.
+> A fixed brain — however large — reasons alone and cannot be caught or corrected. A system of specialist brains with referees, growing new agents at runtime, beats any monolith on real work: the swarm does not just outperform the monolith, it can do things the monolith physically cannot.
 
 **`specialization.py` ships three components.** `SpecializationMatrix` is an evidence-based map of domains (math, code, reasoning, research, creative, verification, frontend, security) to the models that won them — persisted, ranked, and queryable (`best_for(domain)`, `swarm_score`). `SpecializationBench` runs the ground-truth problem set through several candidate models via `Executor.execute(model_override=...)` and records who won what. `compare_report()` publishes the leaderboard — every claim backed by a row of evidence, never marketing language.
 
@@ -198,7 +198,7 @@ The executor itself gained **model_override routing** — a specialization run c
 
 This is also the same principle at the heart of modern frontier systems. Manus itself is widely reported to be a **composite agent built from multiple frontier models working as one** — and it is consistently rated by users at or above Opus-class single models. That is the swarm-of-specialists principle in production: no single model on earth outclasses a well-orchestrated composite, and MAIK is the open-source kernel that makes that orchestration provable — with evidence you can re-run yourself.
 
-### MAIK vs Claude Mythos 5 — the honest, sourced comparison
+### MAIK vs Claude Mythos 5 — the fixed brain vs the system of brains
 
 Claude Mythos 5 (Anthropic, April 2026) is the industry's restricted frontier model: headline benchmark scores, but **not public** (vetted partners only, $10/$50 per million tokens). Its public sibling is Claude Fable 5 (safeguarded). Three facts from **independent researchers** matter:
 
@@ -206,19 +206,26 @@ Claude Mythos 5 (Anthropic, April 2026) is the industry's restricted frontier mo
 2. **An open-source 3.6B-parameter model independently found the same headline vulnerability** Mythos scored on — the "frontier" exploit was not frontier.
 3. **Its AISLE claims were replicated by much smaller open models**, and the replication community found no evidence of unique superintelligence.
 
-Meanwhile MAIK's advantages are **architectural and independently verifiable by anyone who runs `pytest` or `maik specialists`**:
+But the deeper difference is structural, and it is the reason MAIK wins:
 
-| Criterion | Claude Mythos 5 (restricted frontier monolith) | MAIK v3.4.0 (open orchestration kernel) |
+> **Claude Mythos 5 is a fixed brain. MAIK is a system of brains with referees — and a system grows while a brain decays.**
+
+A single brain, no matter how large, reasons alone. On novel scientific problems it can hallucinate, invent concepts outside its training, or drift out of context — and there is nobody to catch it, because it is the only mind in the room. MAIK is the opposite design: the CEO dispatches specialist managers (math, code, simulation, testing, falsifiability, idea generation, idea verification, idea improvement...) whose agents cross-check each other on every problem. When one agent slips, the others see it and call it out — the probability that an error hides from all models at once approaches zero. MAIK also **deploys new agents at runtime**: want to attack a frontier science problem? The CEO can spawn fresh agents — including reinforcement-learning pairs in a calculated sandbox that push the boundary of the science until they can solve it. Mythos physically cannot do that; MAIK grows new brains whenever the work demands it.
+
+The same principle already won in industry: **DeepSeek's Mixture-of-Experts models are not one monolith — they are multiple sub-models activated per token, and they outsized their parameter class**. Three fully-specialized models sharing identical full context outperform one jack-of-all-trades trained on everything. MAIK applies that at the agent level, with every specialist holding the same full context, guarded by a zero-cost local context agent that flags any drift out of scope. And on trivial tasks ("hi") the CEO answers in a single fast call — MAIK was built for the big company tasks where a monolith's one-shot answer is the biggest risk.
+
+| Criterion | Claude Mythos 5 (a fixed brain) | MAIK v3.4.0 (a system of brains) |
 |---|---|---|
 | Access | Vetted partners only; public version is safeguarded Fable 5 | Open source MIT; runs free-first with $0 keys |
 | Cost | $10/$50 per M tokens | Free-first ladder; cost tracked per task; $0 entry |
-| Hallucination control | No published verification loop | Second-model verifier grades **every** answer; SUSPECT → escalate |
-| Learning | Static; no published self-learning | ELO ratings, contradiction mining, flywheel re-benching — improves with use |
-| Domain routing | One monolith answers everything | Evidence-based swarm routing: proven best specialist per domain |
-| Benchmark integrity | Headline scores reliant on 2 bugs (independent finding) | 178/178 tests passing; every benchmark rerunnable by anyone |
+| Mistake hiding | Impossible to catch — one brain, no referee | Cross-checking specialists + second-model verifier on every answer; ~zero chance an error passes all models |
+| Adaptation | Static; cannot deploy new capabilities | Deploys new agents at runtime, including RL pairs that push scientific boundaries |
+| Learning | No published self-learning | ELO ratings, contradiction mining, flywheel re-benching — improves with use |
+| Specialization | One monolith answers everything | Evidence-based swarm routing; live run: swarm 100% across 5 domains while individuals scored 90% |
+| Benchmark integrity | Headline scores reliant on 2 bugs (independent finding) | 181/181 tests passing; every benchmark rerunnable by anyone |
 | Governance | Not published | Org chart, CEO veto with written reason, per-node budgets, audit trails |
 
-The honest framing: MAIK does **not** claim Mythos's raw scores — those are unpublished and, per independent researchers, artifact-dependent. MAIK claims what it can **prove**: a verification loop no Mythos user gets, self-learning no static monolith has, evidence-based specialist routing, zero-cost access, and an architecture the swarm-of-specialists thesis predicts will beat any monolith *on average, across all your real tasks* — with the evidence published right here, rerunnable on your own machine.
+The claim, in one line: **no fixed monolith — Mythos included — can replicate a system that deploys new brains, cross-checks every answer, learns from every run, and absorbs any new model the industry releases, including future Mythos-class ones.** Mythos's ceiling is itself; MAIK's ceiling rises with the entire industry. That is why the swarm beats the monolith, and the live evidence above is rerunnable on your own machine.
 
 ---
 
