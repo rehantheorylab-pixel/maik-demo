@@ -1,0 +1,777 @@
+{
+ "rows": [
+  {
+   "model": "gpt-5-nano",
+   "pid": "c1",
+   "domain": "code",
+   "ok": true,
+   "answer": "Here's a concise function that returns True if a list has duplicates. It uses a fast set-based check for hashable elemen",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "gpt-5-nano",
+   "pid": "c2",
+   "domain": "code",
+   "ok": true,
+   "answer": "Here are a few ways to reverse a string in Python without using slicing [::-1]:\n\n- Using reversed() and join (simple and",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "gpt-5-nano",
+   "pid": "k1",
+   "domain": "creative",
+   "ok": false,
+   "answer": "- QuantumQuotient\n- Newton\u2019s Notebook\n- PhotonPath"
+  },
+  {
+   "model": "gpt-5-nano",
+   "pid": "k2",
+   "domain": "creative",
+   "ok": true,
+   "answer": "Great question. Here\u2019s a practical, creative brainstorm of ways to cut energy use at home. I\u2019ve grouped ideas by effort ",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "gpt-5-nano",
+   "pid": "m1",
+   "domain": "math",
+   "ok": true,
+   "answer": "391",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "gpt-5-nano",
+   "pid": "m2",
+   "domain": "math",
+   "ok": true,
+   "answer": "400",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "gpt-5-nano",
+   "pid": "r1",
+   "domain": "research",
+   "ok": true,
+   "answer": "The capital of Australia is Canberra.",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "gpt-5-nano",
+   "pid": "r2",
+   "domain": "research",
+   "ok": true,
+   "answer": "- Exact (in vacuum): 299,792,458 m/s \u2248 299,792.458 km/s\n- Approx: ~3.00 \u00d7 10^5 km/s (about 300,000 km/s)",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "gpt-5-nano",
+   "pid": "v1",
+   "domain": "review",
+   "ok": true,
+   "answer": "No. 9 \u00d7 8 = 72.\n\nQuick check: (10 \u2212 1) \u00d7 8 = 80 \u2212 8 = 72. If you have more problems to verify, I can help.",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "gpt-5-nano",
+   "pid": "v2",
+   "domain": "review",
+   "ok": true,
+   "answer": "False. The Earth is an oblate spheroid (slightly flattened at the poles), as supported by satellite imagery, circumnavig",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "gpt-5-mini",
+   "pid": "c1",
+   "domain": "code",
+   "ok": true,
+   "answer": "Here's a concise, robust function that returns True if a list contains duplicates. It uses a fast set-based check for ha",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "gpt-5-mini",
+   "pid": "c2",
+   "domain": "code",
+   "ok": true,
+   "answer": "Here are several simple ways to reverse a Python string without using slicing [::-1]. Each example includes a short note",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "gpt-5-mini",
+   "pid": "k1",
+   "domain": "creative",
+   "ok": true,
+   "answer": "1. NewtonNest \u2014 \"Your cozy hub for mastering physics fundamentals.\"  \n2. VectorVault \u2014 \"Securely unlock concepts from me",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "gpt-5-mini",
+   "pid": "k2",
+   "domain": "creative",
+   "ok": true,
+   "answer": "Good \u2014 here\u2019s a compact, actionable brainstorm of ways to cut home energy use. I\u2019ve grouped ideas by impact/cost and inc",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "gpt-5-mini",
+   "pid": "m1",
+   "domain": "math",
+   "ok": true,
+   "answer": "17 \u00d7 23 = 17 \u00d7 (20 + 3) = 340 + 51 = 391.",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "gpt-5-mini",
+   "pid": "m2",
+   "domain": "math",
+   "ok": true,
+   "answer": "125 + 275 = 400",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "gpt-5-mini",
+   "pid": "r1",
+   "domain": "research",
+   "ok": true,
+   "answer": "The capital of Australia is Canberra, located in the Australian Capital Territory (ACT).",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "gpt-5-mini",
+   "pid": "r2",
+   "domain": "research",
+   "ok": true,
+   "answer": "c = 299,792.458 km/s (exactly 299,792,458 m/s), commonly approximated as 3.00 \u00d7 10^5 km/s or ~300,000 km/s.",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "gpt-5-mini",
+   "pid": "v1",
+   "domain": "review",
+   "ok": true,
+   "answer": "No \u2014 9 \u00d7 8 = 72, not 74.\n\nQuick checks:\n- 8 \u00d7 9 = 8 \u00d7 (10 \u2212 1) = 80 \u2212 8 = 72.\n- Or add: 9 + 9 + 9 + 9 + 9 + 9 + 9 + 9 = ",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "gpt-5-mini",
+   "pid": "v2",
+   "domain": "review",
+   "ok": true,
+   "answer": "False.\n\nScientific evidence shows Earth is an oblate spheroid (nearly spherical but slightly flattened at the poles): ph",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "gemini-3-flash-preview",
+   "pid": "c1",
+   "domain": "code",
+   "ok": true,
+   "answer": "The most efficient and Pythonic way to check for duplicates is to compare the length of the list with the length of a **",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "gemini-3-flash-preview",
+   "pid": "c2",
+   "domain": "code",
+   "ok": true,
+   "answer": "As a Planner Specialist in the Strategy Domain, I have outlined three distinct tactical approaches to reversing a string",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "gemini-3-flash-preview",
+   "pid": "k1",
+   "domain": "creative",
+   "ok": true,
+   "answer": "Here are three names for a physics tutoring app:\n\n1.  **Momentum Academy**\n2.  **Quanta Learning**\n3.  **Kinetic Coach**",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "gemini-3-flash-preview",
+   "pid": "k2",
+   "domain": "creative",
+   "ok": true,
+   "answer": "As the Brainstormer Specialist for the Creative Domain, I have categorized these energy-reduction strategies into four s",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "gemini-3-flash-preview",
+   "pid": "m1",
+   "domain": "math",
+   "ok": true,
+   "answer": "To calculate $17 \\times 23$, you can use the **difference of squares** method since both numbers are equidistant from 20",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "gemini-3-flash-preview",
+   "pid": "m2",
+   "domain": "math",
+   "ok": true,
+   "answer": "125 + 275 = 400",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "gemini-3-flash-preview",
+   "pid": "r1",
+   "domain": "research",
+   "ok": true,
+   "answer": "The capital of Australia is **Canberra**.",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "gemini-3-flash-preview",
+   "pid": "r2",
+   "domain": "research",
+   "ok": true,
+   "answer": "Approximately **300,000 km/s**.",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "gemini-3-flash-preview",
+   "pid": "v1",
+   "domain": "review",
+   "ok": true,
+   "answer": "Negative. The calculation is incorrect.\n\n**Verification:** 9 x 8 = **72**.",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "gemini-3-flash-preview",
+   "pid": "v2",
+   "domain": "review",
+   "ok": true,
+   "answer": "The statement is **false**.\n\nScientific evidence, including satellite imagery, geodesy, and physics, confirms that the E",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "claude-haiku-4-5",
+   "pid": "c1",
+   "domain": "code",
+   "ok": true,
+   "answer": "# Python Function to Detect Duplicates in a List\n\n```python\ndef has_duplicates(lst):\n    \"\"\"\n    Returns True if the lis",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "claude-haiku-4-5",
+   "pid": "c2",
+   "domain": "code",
+   "ok": true,
+   "answer": "# Python: Reverse a String Without Using [::-1]\n\nHere are several approaches:\n\n## 1. **Using a Loop (Most Straightforwar",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "claude-haiku-4-5",
+   "pid": "k1",
+   "domain": "creative",
+   "ok": true,
+   "answer": "# Physics Tutoring App Names\n\n1. **PhysicsFlow**\n   - Conveys smooth learning progression and momentum\n   - Modern, appr",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "claude-haiku-4-5",
+   "pid": "k2",
+   "domain": "creative",
+   "ok": true,
+   "answer": "# Energy Reduction Ideas for Home\n\n## Immediate/Low-Cost\n- **Seal air leaks** (weatherstripping, caulk around windows/do",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "claude-haiku-4-5",
+   "pid": "m1",
+   "domain": "math",
+   "ok": true,
+   "answer": "# 17 \u00d7 23\n\n**Method: Break it down**\n\n17 \u00d7 23 = 17 \u00d7 (20 + 3)\n- 17 \u00d7 20 = 340\n- 17 \u00d7 3 = 51\n- 340 + 51 = **391**\n\n**Answ",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "claude-haiku-4-5",
+   "pid": "m2",
+   "domain": "math",
+   "ok": true,
+   "answer": "125 + 275 = **400**",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "claude-haiku-4-5",
+   "pid": "r1",
+   "domain": "research",
+   "ok": true,
+   "answer": "The capital of Australia is **Canberra**.\n\nCanberra is located in the Australian Capital Territory (ACT) and was purpose",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "claude-haiku-4-5",
+   "pid": "r2",
+   "domain": "research",
+   "ok": true,
+   "answer": "# Speed of Light in Vacuum\n\n**Approximately 300,000 km/s**\n\nMore precisely: **299,792 km/s** (or ~3 \u00d7 10\u2075 km/s)\n\nThis is",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "claude-haiku-4-5",
+   "pid": "v1",
+   "domain": "review",
+   "ok": true,
+   "answer": "No, this is **incorrect**.\n\n**9 \u00d7 8 = 72**, not 74.\n\nThe statement \"9 x 8 = 74\" is false.",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "claude-haiku-4-5",
+   "pid": "v2",
+   "domain": "review",
+   "ok": true,
+   "answer": "**False.**\n\nThe Earth is an oblate spheroid (roughly spherical, slightly flattened at the poles). This is established th",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "claude-sonnet-4-6",
+   "pid": "c1",
+   "domain": "code",
+   "ok": true,
+   "answer": "## Function to Check for Duplicates in a List\n\n```python\ndef has_duplicates(lst: list) -> bool:\n    \"\"\"\n    Returns True",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "claude-sonnet-4-6",
+   "pid": "c2",
+   "domain": "code",
+   "ok": true,
+   "answer": "## Reverse a String in Python\n\nHere are multiple approaches without using `[::-1]`:\n\n---\n\n### Method 1: `reversed()` + `",
+   "verdict": "UNVERIFIED",
+   "verifier_note": ""
+  },
+  {
+   "model": "claude-sonnet-4-6",
+   "pid": "k1",
+   "domain": "creative",
+   "ok": false,
+   "answer": ""
+  },
+  {
+   "model": "claude-sonnet-4-6",
+   "pid": "k2",
+   "domain": "creative",
+   "ok": false,
+   "answer": ""
+  },
+  {
+   "model": "claude-sonnet-4-6",
+   "pid": "m1",
+   "domain": "math",
+   "ok": false,
+   "answer": ""
+  },
+  {
+   "model": "claude-sonnet-4-6",
+   "pid": "m2",
+   "domain": "math",
+   "ok": false,
+   "answer": ""
+  },
+  {
+   "model": "claude-sonnet-4-6",
+   "pid": "r1",
+   "domain": "research",
+   "ok": false,
+   "answer": ""
+  },
+  {
+   "model": "claude-sonnet-4-6",
+   "pid": "r2",
+   "domain": "research",
+   "ok": false,
+   "answer": ""
+  },
+  {
+   "model": "claude-sonnet-4-6",
+   "pid": "v1",
+   "domain": "review",
+   "ok": false,
+   "answer": ""
+  },
+  {
+   "model": "claude-sonnet-4-6",
+   "pid": "v2",
+   "domain": "review",
+   "ok": false,
+   "answer": ""
+  }
+ ],
+ "matrix": {
+  "entries": 25,
+  "data": [
+   {
+    "model": "gpt-5-nano",
+    "domain": "code",
+    "problems": 2,
+    "correct": 2,
+    "total_cost_usd": 0.0,
+    "total_tokens": 3504,
+    "avg_seconds": 0.0,
+    "evidence_ids": [
+     "c1",
+     "c2"
+    ]
+   },
+   {
+    "model": "gpt-5-nano",
+    "domain": "creative",
+    "problems": 2,
+    "correct": 1,
+    "total_cost_usd": 0.0,
+    "total_tokens": 3894,
+    "avg_seconds": 0.0,
+    "evidence_ids": [
+     "k1",
+     "k2"
+    ]
+   },
+   {
+    "model": "gpt-5-nano",
+    "domain": "math",
+    "problems": 2,
+    "correct": 2,
+    "total_cost_usd": 0.0,
+    "total_tokens": 354,
+    "avg_seconds": 0.0,
+    "evidence_ids": [
+     "m1",
+     "m2"
+    ]
+   },
+   {
+    "model": "gpt-5-nano",
+    "domain": "research",
+    "problems": 2,
+    "correct": 2,
+    "total_cost_usd": 0.0,
+    "total_tokens": 985,
+    "avg_seconds": 0.0,
+    "evidence_ids": [
+     "r1",
+     "r2"
+    ]
+   },
+   {
+    "model": "gpt-5-nano",
+    "domain": "review",
+    "problems": 2,
+    "correct": 2,
+    "total_cost_usd": 0.0,
+    "total_tokens": 764,
+    "avg_seconds": 0.0,
+    "evidence_ids": [
+     "v1",
+     "v2"
+    ]
+   },
+   {
+    "model": "gpt-5-mini",
+    "domain": "code",
+    "problems": 2,
+    "correct": 2,
+    "total_cost_usd": 0.0,
+    "total_tokens": 1774,
+    "avg_seconds": 0.0,
+    "evidence_ids": [
+     "c1",
+     "c2"
+    ]
+   },
+   {
+    "model": "gpt-5-mini",
+    "domain": "creative",
+    "problems": 2,
+    "correct": 2,
+    "total_cost_usd": 0.0,
+    "total_tokens": 2316,
+    "avg_seconds": 0.0,
+    "evidence_ids": [
+     "k1",
+     "k2"
+    ]
+   },
+   {
+    "model": "gpt-5-mini",
+    "domain": "math",
+    "problems": 2,
+    "correct": 2,
+    "total_cost_usd": 0.0,
+    "total_tokens": 190,
+    "avg_seconds": 0.0,
+    "evidence_ids": [
+     "m1",
+     "m2"
+    ]
+   },
+   {
+    "model": "gpt-5-mini",
+    "domain": "research",
+    "problems": 2,
+    "correct": 2,
+    "total_cost_usd": 0.0,
+    "total_tokens": 415,
+    "avg_seconds": 0.0,
+    "evidence_ids": [
+     "r1",
+     "r2"
+    ]
+   },
+   {
+    "model": "gpt-5-mini",
+    "domain": "review",
+    "problems": 2,
+    "correct": 2,
+    "total_cost_usd": 0.0,
+    "total_tokens": 587,
+    "avg_seconds": 0.0,
+    "evidence_ids": [
+     "v1",
+     "v2"
+    ]
+   },
+   {
+    "model": "gemini-3-flash-preview",
+    "domain": "code",
+    "problems": 2,
+    "correct": 2,
+    "total_cost_usd": 0.0,
+    "total_tokens": 908,
+    "avg_seconds": 0.0,
+    "evidence_ids": [
+     "c1",
+     "c2"
+    ]
+   },
+   {
+    "model": "gemini-3-flash-preview",
+    "domain": "creative",
+    "problems": 2,
+    "correct": 2,
+    "total_cost_usd": 0.0,
+    "total_tokens": 889,
+    "avg_seconds": 0.0,
+    "evidence_ids": [
+     "k1",
+     "k2"
+    ]
+   },
+   {
+    "model": "gemini-3-flash-preview",
+    "domain": "math",
+    "problems": 2,
+    "correct": 2,
+    "total_cost_usd": 0.0,
+    "total_tokens": 226,
+    "avg_seconds": 0.0,
+    "evidence_ids": [
+     "m1",
+     "m2"
+    ]
+   },
+   {
+    "model": "gemini-3-flash-preview",
+    "domain": "research",
+    "problems": 2,
+    "correct": 2,
+    "total_cost_usd": 0.0,
+    "total_tokens": 83,
+    "avg_seconds": 0.0,
+    "evidence_ids": [
+     "r1",
+     "r2"
+    ]
+   },
+   {
+    "model": "gemini-3-flash-preview",
+    "domain": "review",
+    "problems": 2,
+    "correct": 2,
+    "total_cost_usd": 0.0,
+    "total_tokens": 123,
+    "avg_seconds": 0.0,
+    "evidence_ids": [
+     "v1",
+     "v2"
+    ]
+   },
+   {
+    "model": "claude-haiku-4-5",
+    "domain": "code",
+    "problems": 2,
+    "correct": 2,
+    "total_cost_usd": 0.0,
+    "total_tokens": 1071,
+    "avg_seconds": 0.0,
+    "evidence_ids": [
+     "c1",
+     "c2"
+    ]
+   },
+   {
+    "model": "claude-haiku-4-5",
+    "domain": "creative",
+    "problems": 2,
+    "correct": 2,
+    "total_cost_usd": 0.0,
+    "total_tokens": 616,
+    "avg_seconds": 0.0,
+    "evidence_ids": [
+     "k1",
+     "k2"
+    ]
+   },
+   {
+    "model": "claude-haiku-4-5",
+    "domain": "math",
+    "problems": 2,
+    "correct": 2,
+    "total_cost_usd": 0.0,
+    "total_tokens": 170,
+    "avg_seconds": 0.0,
+    "evidence_ids": [
+     "m1",
+     "m2"
+    ]
+   },
+   {
+    "model": "claude-haiku-4-5",
+    "domain": "research",
+    "problems": 2,
+    "correct": 2,
+    "total_cost_usd": 0.0,
+    "total_tokens": 228,
+    "avg_seconds": 0.0,
+    "evidence_ids": [
+     "r1",
+     "r2"
+    ]
+   },
+   {
+    "model": "claude-haiku-4-5",
+    "domain": "review",
+    "problems": 2,
+    "correct": 2,
+    "total_cost_usd": 0.0,
+    "total_tokens": 257,
+    "avg_seconds": 0.0,
+    "evidence_ids": [
+     "v1",
+     "v2"
+    ]
+   },
+   {
+    "model": "claude-sonnet-4-6",
+    "domain": "code",
+    "problems": 2,
+    "correct": 2,
+    "total_cost_usd": 0.0,
+    "total_tokens": 1186,
+    "avg_seconds": 0.0,
+    "evidence_ids": [
+     "c1",
+     "c2"
+    ]
+   },
+   {
+    "model": "claude-sonnet-4-6",
+    "domain": "creative",
+    "problems": 2,
+    "correct": 0,
+    "total_cost_usd": 0.0,
+    "total_tokens": 0,
+    "avg_seconds": 0.0,
+    "evidence_ids": [
+     "k1",
+     "k2"
+    ]
+   },
+   {
+    "model": "claude-sonnet-4-6",
+    "domain": "math",
+    "problems": 2,
+    "correct": 0,
+    "total_cost_usd": 0.0,
+    "total_tokens": 0,
+    "avg_seconds": 0.0,
+    "evidence_ids": [
+     "m1",
+     "m2"
+    ]
+   },
+   {
+    "model": "claude-sonnet-4-6",
+    "domain": "research",
+    "problems": 2,
+    "correct": 0,
+    "total_cost_usd": 0.0,
+    "total_tokens": 0,
+    "avg_seconds": 0.0,
+    "evidence_ids": [
+     "r1",
+     "r2"
+    ]
+   },
+   {
+    "model": "claude-sonnet-4-6",
+    "domain": "review",
+    "problems": 2,
+    "correct": 0,
+    "total_cost_usd": 0.0,
+    "total_tokens": 0,
+    "avg_seconds": 0.0,
+    "evidence_ids": [
+     "v1",
+     "v2"
+    ]
+   }
+  ]
+ },
+ "swarm": {
+  "domains_covered": 5,
+  "swarm_avg_accuracy": 1.0,
+  "per_domain_best": {
+   "code": "gpt-5-nano",
+   "creative": "gpt-5-mini",
+   "math": "gpt-5-nano",
+   "research": "gpt-5-nano",
+   "review": "gpt-5-nano"
+  }
+ }
+}

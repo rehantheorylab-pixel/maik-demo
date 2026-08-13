@@ -92,9 +92,16 @@ class ProviderLadder:
         self._build_ladder()
 
     def _build_ladder(self) -> None:
-        """Free-first ladder. Gates (custom/local/OpenRouter) before paid keys."""
+        """Free-first ladder. Gates (custom/local/OpenRouter) before paid keys.
+
+        Phase N: an OpenAI-compatible endpoint can be pinned as the very
+        first rung via ``MAIK_LIVE_BASE_URL`` (with ``MAIK_LIVE_API_KEY``),
+        e.g. the sandbox LLM proxy — used by specialization bench runs.
+        """
         gw_url = get_secret("MAIK_GATEWAY_URL")
         gw_key = get_secret("MAIK_GATEWAY_KEY")
+        base_env = os.environ.get("MAIK_LIVE_BASE_URL") or ""
+        base_key = os.environ.get("MAIK_LIVE_API_KEY") or ""
         free_url = get_secret("MAIK_FREE_GATEWAY_URL")
         free_key = get_secret("MAIK_FREE_GATEWAY_KEY")
         free_headers: Dict[str, str] = {}
@@ -109,6 +116,8 @@ class ProviderLadder:
         google_key = get_secret("GOOGLE_API_KEY")
 
         self.entries = [
+            ProviderEntry("live_base", "openai", base_env, lambda: base_key)
+            if base_env else None,
             ProviderEntry("local_gateway", "openai", gw_url, lambda: gw_key)
             if gw_url else None,
             ProviderEntry("free_gateway", "openai", free_url, lambda: free_key,

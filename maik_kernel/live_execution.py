@@ -135,7 +135,15 @@ class LiveExecution:
                     "model_used": f"stub/{model}", "prompt_tokens": 0,
                     "completion_tokens": 0, "cost_usd": 0.0, "verdict": verdict,
                     "live": False}
-        model_id = _resolve_free_model(model) if model in FREE_TIER_MODELS else model
+        # Phase N: an explicit verifier model can be pinned via
+        # MAIK_LIVE_VERIFIER_MODEL; tier overrides (MAIK_LIVE_MODEL_*) still
+        # beat the free-registry defaults in any deployment.
+        if os.environ.get("MAIK_LIVE_VERIFIER_MODEL"):
+            model_id = os.environ["MAIK_LIVE_VERIFIER_MODEL"]
+        elif model in FREE_TIER_MODELS:
+            model_id = self.resolve_tier(model)
+        else:
+            model_id = model
         resp = self.complete(model_id, [
             {"role": "system", "content": sys},
             {"role": "user", "content": f"PROBLEM: {problem}\nANSWER: {answer}"},

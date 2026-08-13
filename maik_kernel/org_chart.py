@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Optional
 
 from .config import ModelTier
 
-VERSION = "3.3.1"
+VERSION = "3.4.0"
 
 
 class NodeLevel(enum.Enum):

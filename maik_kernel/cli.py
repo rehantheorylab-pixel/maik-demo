@@ -23,6 +23,11 @@ from typing import Optional
 from tabulate import tabulate
 
 from .bench_truth import TruthBench
+from .specialization import (
+    SpecializationBench,
+    SpecializationMatrix,
+    compare_report,
+)
 from .config import Config
 from .flywheel import Flywheel
 from .org_chart import OrgChart
@@ -104,6 +109,60 @@ def cmd_bench(args: argparse.Namespace) -> int:
     print("\nLearning state")
     print(json.dumps(learn.status(), indent=1))
     return 0 if summary["accuracy"] > 0 else 1
+
+
+# ----------------------------------------------------------------------
+# Phase N — specialization bench (`maik specialists`)
+# ----------------------------------------------------------------------
+
+def cmd_specialists_run(args: argparse.Namespace) -> int:
+    """Run a head-to-head specialization bench across candidate models."""
+    stub = bool(args.stub) or os.environ.get("MAIK_STUB", "").strip() == "1"
+    if stub:
+        os.environ["MAIK_STUB"] = "1"
+    cfg = Config()
+    models = [m.strip() for m in args.models.split(",") if m.strip()]
+    if not models:
+        print("No models given; use --models m1,m2,...", file=sys.stderr)
+        return 2
+    base = Path(os.environ.get("MAIK_DATA_DIR", ".maik_data"))
+    matrix = SpecializationMatrix(base)
+    bench = TruthBench(config=cfg)
+    ex = Executor(cfg)
+    sb = SpecializationBench(matrix, executor=ex, bench=bench)
+    problems = (bench.DEFAULTS[: args.n]
+                if args.n and 0 < args.n < len(bench.DEFAULTS)
+                else bench.DEFAULTS)
+    print(f"Mode: {'STUB (offline)' if stub else 'LIVE'} | "
+          f"{len(models)} models x {len(problems)} problems")
+    out = sb.run(models, problems=problems)
+    summary = out["matrix"]
+    print(f"Recorded {summary['entries']} evidence rows")
+    print("Swarm score")
+    print(json.dumps(out["swarm"], indent=1))
+    print(tabulate(
+        [(r["model"], r["domain"],
+          "PASS" if r["ok"] else "FAIL", r["pid"],
+          (r["answer"][:30] + "...") if r["answer"] else "(none)")
+         for r in out["rows"]],
+        headers=["model", "domain", "result", "id", "answer"],
+        tablefmt="simple"))
+    report = compare_report(matrix)
+    if args.report:
+        Path(args.report).write_text(report)
+        print(f"\nReport written to {args.report}")
+    else:
+        print()
+        print(report)
+    return 0
+
+
+def cmd_specialists_report(_args: argparse.Namespace) -> int:
+    """Print the recorded specialization report from saved evidence."""
+    base = Path(os.environ.get("MAIK_DATA_DIR", ".maik_data"))
+    matrix = SpecializationMatrix(base)
+    print(compare_report(matrix))
+    return 0 if matrix.domains_covered() else 1
 
 
 # ----------------------------------------------------------------------
@@ -491,6 +550,25 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--stub", action="store_true",
                    help="Force offline stub mode (no LLM calls)")
     b.set_defaults(func=cmd_bench)
+
+    sp = sub.add_parser("specialists",
+                        help="Phase N specialization: run/report")
+    spsub = sp.add_subparsers(dest="specialists_command", required=True)
+
+    spr = spsub.add_parser("run",
+                           help="Head-to-head bench across candidate models")
+    spr.add_argument("--models", required=True,
+                     help="Comma-separated model names, e.g. gpt-5,gemini-flash")
+    spr.add_argument("--n", type=int, default=None,
+                     help="Run only the first N problems")
+    spr.add_argument("--stub", action="store_true",
+                     help="Force offline stub mode (no LLM calls)")
+    spr.add_argument("--report", default=None,
+                     help="Save the evidence report to a file")
+    spr.set_defaults(func=cmd_specialists_run)
+
+    spt = spsub.add_parser("report", help="Print the saved evidence report")
+    spt.set_defaults(func=cmd_specialists_report)
 
     st = sub.add_parser("status", help="Show system health and learning state")
     st.set_defaults(func=cmd_status)

@@ -9,5 +9,5 @@ API/model management agent (K), CEO access layer (L).
 Frontend (CLI/API) wraps this package; nothing in core imports FastAPI.
 """
 
-__version__ = "3.3.1"
+__version__ = "3.4.0"
 __author__ = "Rehan Muhammad"

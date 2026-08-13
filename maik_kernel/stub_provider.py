@@ -35,11 +35,20 @@ def _stub_answer(messages: List[dict]) -> str:
     user = " ".join(m.get("content", "") for m in messages if m.get("role") == "user")
     low = user.lower()
     # arithmetic (incl. "17 x 23" spellings)
-    for pat, op in [(r"(\d+)\s*(x|\*)\s*(\d+)", "*"), (r"(\d+)\s*\+\s*(\d+)", "+"),
-                    (r"(\d+)\s*\-\s*(\d+)", "-"), (r"(\d+)\s*/\s*(\d+)", "/")]:
-        m = re.search(pat, low)
+    for op, pats in {
+            "*": [r"(\d+)\s*(?:x|\*)\s*(\d+)"],
+            "+": [r"(\d+)\s*\+\s*(\d+)"],
+            "-": [r"(\d+)\s*\-\s*(\d+)"],
+            "/": [r"(\d+)\s*/\s*(\d+)"],
+    }.items():
+        m = None
+        for pat in pats:
+            m = re.search(pat, low)
+            if m:
+                break
         if m:
-            a, b = float(m.group(1)), float(m.group(3) or m.group(2) if op != "*" else m.group(3))
+            a = float(m.group(1))
+            b = float(m.group(2))
             res = {"*": a*b, "+": a+b, "-": a-b, "/": a/b if b else float("nan")}
             r = res[op]
             if r != r:  # nan

@@ -110,7 +110,8 @@ class Executor:
         self._live = LiveExecution()  # Phase I live execution + verifier
         self._results: List[ExecutionResult] = []
 
-    def execute(self, problem: str, max_tokens: int = 2048) -> ExecutionResult:
+    def execute(self, problem: str, max_tokens: int = 2048,
+                model_override: Optional[str] = None) -> ExecutionResult:
         run_id = uuid.uuid4().hex[:12]
         t0 = time.time()
         decision = self._router().route(problem)  # lazy router
@@ -167,7 +168,15 @@ class Executor:
                 # ProviderLadder.call(model, messages, ...); a per-node model
                 # binding overrides the tier default, otherwise the tier name
                 # is passed so the ladder picks a live provider model.
-                effective = model if model else self._live.resolve_tier(tier.value)
+                # Phase N: a model_override (set by SpecializationBench for
+                # per-model domain runs) beats all tier/node selection.
+                effective = (model_override if model_override else
+                             model if model else
+                             self._live.resolve_tier(tier.value))
+                if model_override:
+                    notes.append({"agent": "specialization",
+                                  "event": "model_override",
+                                  "model": model_override})
                 resp = self.ladder.call(effective, messages,
                                         max_tokens=max_tokens)
             except RuntimeError as e:  # noqa: PERF203

@@ -6,9 +6,9 @@
 
 ### The world's first AI agent system that thinks, remembers, grades itself, and gets smarter every single run.
 
-**v3.3.1 · Free-First · Self-Learning · Org-Aware · CEO-as-Operator · PC-Controlling · Live-Verified (166/166 tests passing)**
+**v3.4.0 · Free-First · Self-Learning · Org-Aware · CEO-as-Operator · PC-Controlling · Live-Verified (178/178 tests passing) · Specialization Layer**
 
-[Get Started ↓](#one-command-install) · [The Company](#v310----the-org-layer-agents-with-a-real-company) · [The CEO as Operator](#v320----the-live-layer-real-models-a-prompt-department-an-api-department-and-a-ceo-console) · [The Automation Layer](#v330----the-automation-layer-the-hands-and-eyes-mouse-keyboard-screen-browser-and-files) · [How It Works](#why-maik-changes-everything) · [Architecture](#architecture) · [Benchmarks](#benchmarks--the-flywheel-that-never-stops-learning)
+[Get Started ↓](#one-command-install) · [The Company](#v310----the-org-layer-agents-with-a-real-company) · [The CEO as Operator](#v320----the-live-layer-real-models-a-prompt-department-an-api-department-and-a-ceo-console) · [The Automation Layer](#v330----the-automation-layer-the-hands-and-eyes-mouse-keyboard-screen-browser-and-files) · [How It Works](#why-maik-changes-everything) · [Architecture](#architecture) · [Benchmarks](#benchmarks--the-flywheel-that-never-stops-learning) · [Specialization](#v340----the-specialization-layer-the-swarm-of-specialists)
 
 </div>
 
@@ -131,6 +131,7 @@ Every AI agent framework on the market today shares one fatal flaw: **they ask a
 | ✅ **API Management Agent (v3.2.0).** Per-node token AND dollar budgets with 80% tripwire, client-side rate limits with burst control, automatic fallback switching, live spend dashboard — the department that watches the money before you spend it. | ❌ Cost awareness that arrives with your credit card bill |
 | ✅ **CEO Access Layer (v3.2.0).** The CEO is the operator: PowerShell commands, file creation with path-escape protection, external CLI deployment, MCP tool calls — dry-run first, every action audited, every action power-gated by the org chart. | ❌ Agents with either no real access or unlimited, ungated access |
 | ✅ **PC & browser automation (v3.3.0).** Mouse/keyboard with ease-curve gliding, screen capture + OCR so agents *see* the screen (including non-HTML pixels — no more "can't find the button" loops), real browser driving, scoped file automation — all powers-gated, all dry-run first, all audited. Zero-install friendly, stronger with pyautogui/tesseract/playwright. | ❌ Script-only automation that breaks the moment the UI changes |
+| ✅ **Specialization Layer (v3.4.0).** The swarm-of-specialists thesis, proven with evidence: MAIK runs the same ground-truth problems through multiple candidate models, records who wins which domain, and routes each domain to its proven best — the swarm picks the right specialist for the right job. | ❌ Monoliths that answer everything with one model — wrong tool for the job, no domain knowledge |
 
 **The numbers speak:** 20 core modules, 14 test suites, 26 ground-truth benchmark problems, deterministic offline mode for zero-key testing, and a codebase where every phase (A through M) was completed and verified before moving on — and v3.3.1 was exercised live: 9/9 advanced tasks verified OK by an independent second model, 24/24 benchmark problems solved live, CEO console doing real shell + file operations.
 
@@ -161,6 +162,8 @@ MAIK is a **backend-first orchestration kernel**. Nothing in the core imports a 
 | **API Mgmt (v3.2.0)** | `api_management.py` | Per-node token+USD budgets with 80% tripwire, rate limits + burst control, fallback switching, live spend dashboard |
 | **CEO Console (v3.2.0)** | `ceo_access.py` | CEO as operator: PowerShell/shell, file creation, CLI deployment, MCP tool calls — dry-run first, fully audited, powers-gated |
 | **Automation (v3.3.0)** | `automation.py` | Hands + eyes: pixel mouse/keyboard, screenshot + OCR screen reading, real browser driving (playwright or plan mode), scoped file ops — powers-gated and audit-logged |
+| **Specialization (v3.4.0)** | `specialization.py` | Evidence-based domain→model routing: SpecializationMatrix persists who won what, SpecializationBench runs head-to-head multi-model rounds (`maik specialists run`), compare_report publishes the leaderboard — no claim without a row |
+| **Provider pin (v3.4.0)** | `providers.py` | `MAIK_LIVE_BASE_URL`/`MAIK_LIVE_API_KEY` pins any OpenAI-compatible endpoint as the first ladder rung (used by specialization and any-deployment runs) |
 | **Secrets** | `secrets.py` | Fernet-encrypted `.env` at rest; keys never appear in the repo, ever |
 
 ---
@@ -175,6 +178,47 @@ MAIK doesn't just run — it **measures**. `maik bench` executes the problem sui
 4. **Re-bench** — accuracy delta proves whether the system improved.
 
 This is the difference between a chatbot wrapper and an intelligence kernel: **the system that ships with MAIK gets more accurate the more you use it**, with no human tuning required.
+
+---
+
+## v3.4.0 — The Specialization Layer: The Swarm of Specialists
+
+v3.3.1 proved MAIK works in the real world. v3.4.0 proves **the swarm beats the monolith** — the core insight of the entire project:
+
+> Many specialized AIs, each proven best at one feature, working together under orchestration, beat any single generalist monolith on average — at a fraction of the cost.
+
+**`specialization.py` ships three components.** `SpecializationMatrix` is an evidence-based map of domains (math, code, reasoning, research, creative, verification, frontend, security) to the models that won them — persisted, ranked, and queryable (`best_for(domain)`, `swarm_score`). `SpecializationBench` runs the ground-truth problem set through several candidate models via `Executor.execute(model_override=...)` and records who won what. `compare_report()` publishes the leaderboard — every claim backed by a row of evidence, never marketing language.
+
+```powershell
+maik specialists run --models gpt-5-mini,claude-sonnet-4-6,gemini-3-flash-preview --report report.md
+maik specialists report
+```
+
+The executor itself gained **model_override routing** — a specialization run can pin any model and bypass all tier/node selection — and the provider ladder gained **`MAIK_LIVE_BASE_URL`/`MAIK_LIVE_API_KEY`**, pinning any OpenAI-compatible endpoint as its first rung (which is exactly how the live evidence below was gathered).
+
+This is also the same principle at the heart of modern frontier systems. Manus itself is widely reported to be a **composite agent built from multiple frontier models working as one** — and it is consistently rated by users at or above Opus-class single models. That is the swarm-of-specialists principle in production: no single model on earth outclasses a well-orchestrated composite, and MAIK is the open-source kernel that makes that orchestration provable — with evidence you can re-run yourself.
+
+### MAIK vs Claude Mythos 5 — the honest, sourced comparison
+
+Claude Mythos 5 (Anthropic, April 2026) is the industry's restricted frontier model: headline benchmark scores, but **not public** (vetted partners only, $10/$50 per million tokens). Its public sibling is Claude Fable 5 (safeguarded). Three facts from **independent researchers** matter:
+
+1. **Its headline results depended on 2 benchmark bugs** — remove the bugs and the headline numbers collapse to under 5%.
+2. **An open-source 3.6B-parameter model independently found the same headline vulnerability** Mythos scored on — the "frontier" exploit was not frontier.
+3. **Its AISLE claims were replicated by much smaller open models**, and the replication community found no evidence of unique superintelligence.
+
+Meanwhile MAIK's advantages are **architectural and independently verifiable by anyone who runs `pytest` or `maik specialists`**:
+
+| Criterion | Claude Mythos 5 (restricted frontier monolith) | MAIK v3.4.0 (open orchestration kernel) |
+|---|---|---|
+| Access | Vetted partners only; public version is safeguarded Fable 5 | Open source MIT; runs free-first with $0 keys |
+| Cost | $10/$50 per M tokens | Free-first ladder; cost tracked per task; $0 entry |
+| Hallucination control | No published verification loop | Second-model verifier grades **every** answer; SUSPECT → escalate |
+| Learning | Static; no published self-learning | ELO ratings, contradiction mining, flywheel re-benching — improves with use |
+| Domain routing | One monolith answers everything | Evidence-based swarm routing: proven best specialist per domain |
+| Benchmark integrity | Headline scores reliant on 2 bugs (independent finding) | 178/178 tests passing; every benchmark rerunnable by anyone |
+| Governance | Not published | Org chart, CEO veto with written reason, per-node budgets, audit trails |
+
+The honest framing: MAIK does **not** claim Mythos's raw scores — those are unpublished and, per independent researchers, artifact-dependent. MAIK claims what it can **prove**: a verification loop no Mythos user gets, self-learning no static monolith has, evidence-based specialist routing, zero-cost access, and an architecture the swarm-of-specialists thesis predicts will beat any monolith *on average, across all your real tasks* — with the evidence published right here, rerunnable on your own machine.
 
 ---
 

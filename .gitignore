@@ -22,3 +22,6 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .DS_Store
+live_verify_err.txt
+live_verify_out.txt
+nohup.out
