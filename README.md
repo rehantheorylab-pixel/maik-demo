@@ -244,6 +244,14 @@ A sparse swarm is structured like a fully organized NASA team: every brain has e
 
 Industry already validated this principle at the model layer: **Mixture-of-Experts models keep most of their total parameters dormant and activate only the expert slice per token — DeepSeek's MoE designs outsized their active-parameter class precisely because of this.** MAIK applies the same sparsity principle one level higher, at the agent-system layer: the whole swarm's intelligence is never loaded at once, only the specialists the CEO's org chart assigns — so MAIK runs heavy tasks with monolith-level cost, but answers with specialist-level purity. This is also why the swarm's live accuracy (100% across five domains) beat every individual model (90%) in our verification run: more capacity, less noise, per task.
 
+#### The Chain-Length Problem: a monolith fails when the problem gets long; a checked swarm stays flat
+
+This is the practical consequence that matters most for real work. A single brain answers in one chain of thought — and **every extra reasoning step is another roll of the dice**. When a frontier monolith tackles something truly hard — the black-hole information paradox, a multi-stage proof, a ten-file codebase refactor — a hallucination anywhere in the chain poisons everything downstream, and there is no one mid-chain to watch the chain. Error rate therefore *grows with problem length*: the hardest, most valuable problems are exactly where a monolith fails most often.
+
+MAIK inverts that. Every intermediate result is produced by one agent and inspected by agents that did **not** produce it — the falsifiability agent, the contradiction hunter, the verifier, the second-model grade loop. The system does not need every agent to be perfect; it needs the group to catch what the individual misses. If step seven hallucinates, step eight's inspectors flag the inconsistency with the ground truth and the work goes back for repair — or a fresh specialist is deployed to re-attack it. So while a monolith's error curve rises with problem length, a checked swarm's stays roughly flat: a monolith fails when the problem is long enough to hallucinate; a swarm fails only when *all* its brains hallucinate at once — near-zero probability. Our live verification run demonstrated this directly: individual models each missed questions (90% each), and the swarm caught every one of them (100%).
+
+And when a problem exceeds what the current specialists can solve, MAIK does what no monolith can: it **grows new brains** — deploying fresh agents at runtime, including reinforcement-learning pairs in a calculated sandbox that push the boundary of the science itself until they can solve it. Mythos answers once and stops; MAIK works until an answer survives the referees. That is the difference between a brain and a laboratory.
+
 ---
 
 ## Philosophy & Credits
