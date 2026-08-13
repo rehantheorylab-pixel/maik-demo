@@ -378,6 +378,88 @@ def cmd_status(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _auto_policy(args) -> "AutomationPolicy":
+    from .automation import AutomationPolicy
+    return AutomationPolicy(workdir=Path.cwd(), dry_run=not args.live)
+
+
+def cmd_automate_input(args: argparse.Namespace) -> int:
+    """Mouse/keyboard control (dry-run first; --live to execute)."""
+    from .automation import AutomationAgent
+    a = AutomationAgent(_auto_policy(args))
+    act = args.action
+    if act == "move":
+        r = a.move_mouse(x=args.x, y=args.y)
+    elif act == "click":
+        r = a.click(x=args.x, y=args.y, button=args.button, times=1)
+    elif act == "double-click":
+        r = a.click(x=args.x, y=args.y, button=args.button, times=2)
+    elif act == "drag":
+        r = a.drag(x1=args.x, y1=args.y, x2=args.x2, y2=args.y2)
+    elif act == "type":
+        r = a.type_text(text=args.text)
+    elif act == "press":
+        r = a.press(keys=args.keys)
+    else:
+        return 1
+    print(json.dumps(r, indent=1))
+    return 0 if r["ok"] else 1
+
+
+def cmd_automate_screen(args: argparse.Namespace) -> int:
+    """Screen capture + OCR."""
+    from .automation import AutomationAgent
+    a = AutomationAgent(_auto_policy(args))
+    if args.screen_action == "capture":
+        r = a.capture()
+    else:
+        r = a.ocr()
+    print(json.dumps(r, indent=1))
+    return 0 if r.get("ok") else 1
+
+
+def cmd_automate_browser(args: argparse.Namespace) -> int:
+    """Real browser automation (dry-run first; --live to execute)."""
+    from .automation import AutomationAgent
+    a = AutomationAgent(_auto_policy(args))
+    if args.browser_action == "goto":
+        if not args.url:
+            print("ERROR: pass --url"); return 1
+        r = a.goto(url=args.url)
+    elif args.browser_action == "click":
+        if not args.selector:
+            print("ERROR: pass --selector"); return 1
+        r = a.click_selector(selector=args.selector)
+    elif args.browser_action == "fill":
+        if not args.selector:
+            print("ERROR: pass --selector"); return 1
+        r = a.fill(selector=args.selector, value=args.value)
+    else:
+        r = a.content_text(selector=args.selector or None)
+    print(json.dumps(r, indent=1))
+    return 0 if r.get("ok") else 1
+
+
+def cmd_automate_file(args: argparse.Namespace) -> int:
+    """Scoped file automation (workdir = current folder)."""
+    from .automation import AutomationAgent
+    a = AutomationAgent(_auto_policy(args))
+    if args.file_action == "write":
+        r = a.file_write(rel=args.path, content=args.text)
+    elif args.file_action == "read":
+        r = a.file_read(rel=args.path)
+    elif args.file_action == "list":
+        r = a.file_list(rel=args.path)
+    elif args.file_action == "move":
+        r = a.file_move(src=args.path, dst=args.path2)
+    elif args.file_action == "copy":
+        r = a.file_copy(src=args.path, dst=args.path2)
+    else:
+        r = a.file_delete(rel=args.path, recursive=args.recursive)
+    print(json.dumps(r, indent=1))
+    return 0 if r.get("ok") else 1
+
+
 def cmd_flywheel(args: argparse.Namespace) -> int:
     """Run the closed learning loop."""
     fw = Flywheel(max_revolution=args.revolutions)
@@ -487,6 +569,52 @@ def build_parser() -> argparse.ArgumentParser:
     f.add_argument("--revolutions", type=int, default=1,
                    help="Number of loop revolutions (default 1)")
     f.set_defaults(func=cmd_flywheel)
+
+    # ----------------------------------------------------------------
+    # `maik automate` — Phase M: PC & browser automation operator
+    # ----------------------------------------------------------------
+    am = sub.add_parser("automate", help="Phase M: PC & browser automation "
+                                         "(mouse/keyboard, screen, browser, files)")
+    amsub = am.add_subparsers(dest="auto_command", required=True)
+
+    ai = amsub.add_parser("input", help="Mouse/keyboard (dry-run first)")
+    ai.add_argument("action", choices=["move", "click", "double-click",
+                                       "drag", "type", "press"])
+    ai.add_argument("--x", type=int, default=0)
+    ai.add_argument("--y", type=int, default=0)
+    ai.add_argument("--x2", type=int, default=0)
+    ai.add_argument("--y2", type=int, default=0)
+    ai.add_argument("--text", default="", help="Text to type")
+    ai.add_argument("--keys", default="", help="Hotkey, e.g. ctrl+c")
+    ai.add_argument("--button", default="left")
+    ai.add_argument("--live", action="store_true",
+                    help="Execute for real (default: dry-run)")
+    ai.set_defaults(func=cmd_automate_input)
+
+    asr = amsub.add_parser("screen", help="Screen capture + OCR")
+    asr.add_argument("screen_action", choices=["capture", "ocr"])
+    asr.add_argument("--live", action="store_true")
+    asr.set_defaults(func=cmd_automate_screen)
+
+    ab = amsub.add_parser("browser", help="Real browser automation")
+    ab.add_argument("browser_action", choices=["goto", "click", "fill",
+                                               "content"])
+    ab.add_argument("--url", default="")
+    ab.add_argument("--selector", default="")
+    ab.add_argument("--value", default="")
+    ab.add_argument("--live", action="store_true")
+    ab.set_defaults(func=cmd_automate_browser)
+
+    af = amsub.add_parser("file", help="Scoped file automation (workdir = .)")
+    af.add_argument("file_action", choices=["write", "read", "list", "move",
+                                            "copy", "delete"])
+    af.add_argument("--path", default=".")
+    af.add_argument("--path2", default="")
+    af.add_argument("--text", default="", help="Content to write")
+    af.add_argument("--recursive", action="store_true",
+                    help="Recursive delete for folders")
+    af.add_argument("--live", action="store_true")
+    af.set_defaults(func=cmd_automate_file)
 
     return p
 

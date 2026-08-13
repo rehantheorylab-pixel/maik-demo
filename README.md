@@ -6,9 +6,9 @@
 
 ### The world's first AI agent system that thinks, remembers, grades itself, and gets smarter every single run.
 
-**v3.2.0 · Free-First · Self-Learning · Org-Aware · CEO-as-Operator · Battle-Tested (146/146 tests passing)**
+**v3.3.0 · Free-First · Self-Learning · Org-Aware · CEO-as-Operator · PC-Controlling · Battle-Tested (166/166 tests passing)**
 
-[Get Started ↓](#one-command-install) · [The Company](#v310----the-org-layer-agents-with-a-real-company) · [The CEO as Operator](#v320----the-live-layer-real-models-a-prompt-department-an-api-department-and-a-ceo-console) · [How It Works](#why-maik-changes-everything) · [Architecture](#architecture) · [Benchmarks](#benchmarks--the-flywheel-that-never-stops-learning)
+[Get Started ↓](#one-command-install) · [The Company](#v310----the-org-layer-agents-with-a-real-company) · [The CEO as Operator](#v320----the-live-layer-real-models-a-prompt-department-an-api-department-and-a-ceo-console) · [The Automation Layer](#v330----the-automation-layer-the-hands-and-eyes-mouse-keyboard-screen-browser-and-files) · [How It Works](#why-maik-changes-everything) · [Architecture](#architecture) · [Benchmarks](#benchmarks--the-flywheel-that-never-stops-learning)
 
 </div>
 
@@ -74,6 +74,28 @@ maik solve "find prime factors of 9999991"   # now runs live when keys are prese
 maik status                                  # org health + API spend dashboard
 ```
 
+## v3.3.0 — The Automation Layer: The Hands and Eyes (Mouse, Keyboard, Screen, Browser, Files)
+
+v3.2.0 gave the CEO a console. v3.3.0 gives your agents **real hands and eyes** — a full PC and browser automation operator, gated by the same powers and scoped-permission system, so automation can never exceed what the org chart allows.
+
+**Pixel-level input (`automation.py` → InputOperator).** Move the cursor with ease-curve gliding, click, double-click, drag, type, and press hotkeys — every action with a ceiling on movement steps and out-of-screen rejection. Install `pyautogui` for true control; without it, every action returns a precise plan mode describing exactly what would execute.
+
+**Screen vision (`ScreenReader`).** Full or partial screenshot capture plus OCR — agents can *read* what's actually on screen, including things that don't exist in HTML (pixel-accurate, loop-proof by design: the agent sees, reads, decides — it is never "stuck in a loop looking for a button").
+
+**Real browser driving (`BrowserOperator`).** Navigate, click selectors, fill forms, read page text — with Playwright when installed, plan mode otherwise. Every action dry-run first.
+
+**Scoped file automation (`FileOperator`).** Write, read, list, move, copy, delete — always resolved against the node's scope: one file, the project folder, or the full computer. Paths that escape scope are rejected before anything happens.
+
+**Zero-install first, better with tools.** Every action works (or fails clearly) with no optional dependencies. Install `pyautogui`, `pillow` + `tesseract`, or `playwright` and the same commands get stronger — never broken.
+
+```powershell
+maik automate input move --x 500 --y 400          # dry-run by default
+maik automate input move --x 500 --y 400 --live   # execute for real
+maik automate screen ocr                          # capture + OCR the screen
+maik automate browser goto --url https://example.com
+maik automate file write --path report.md --text "# Q3 review"
+```
+
 ---
 
 ## Why MAIK Changes Everything
@@ -102,8 +124,9 @@ Every AI agent framework on the market today shares one fatal flaw: **they ask a
 | ✅ **Prompt Management Agent (v3.2.0).** A dedicated agent that writes, grades, and auto-upgrades prompts for every other agent — 8 weighted quality criteria, version history, never-lose-an-edit. Best prompt = best agent = best CLI in the world. | ❌ Prompts hand-written once and never measured or improved |
 | ✅ **API Management Agent (v3.2.0).** Per-node token AND dollar budgets with 80% tripwire, client-side rate limits with burst control, automatic fallback switching, live spend dashboard — the department that watches the money before you spend it. | ❌ Cost awareness that arrives with your credit card bill |
 | ✅ **CEO Access Layer (v3.2.0).** The CEO is the operator: PowerShell commands, file creation with path-escape protection, external CLI deployment, MCP tool calls — dry-run first, every action audited, every action power-gated by the org chart. | ❌ Agents with either no real access or unlimited, ungated access |
+| ✅ **PC & browser automation (v3.3.0).** Mouse/keyboard with ease-curve gliding, screen capture + OCR so agents *see* the screen (including non-HTML pixels — no more "can't find the button" loops), real browser driving, scoped file automation — all powers-gated, all dry-run first, all audited. Zero-install friendly, stronger with pyautogui/tesseract/playwright. | ❌ Script-only automation that breaks the moment the UI changes |
 
-**The numbers speak:** 19 core modules, 13 test suites, 26 ground-truth benchmark problems, deterministic offline mode for zero-key testing, and a codebase where every phase (A through L) was completed and verified before moving on.
+**The numbers speak:** 20 core modules, 14 test suites, 26 ground-truth benchmark problems, deterministic offline mode for zero-key testing, and a codebase where every phase (A through M) was completed and verified before moving on.
 
 ---
 
@@ -131,6 +154,7 @@ MAIK is a **backend-first orchestration kernel**. Nothing in the core imports a 
 | **Prompt Mgmt (v3.2.0)** | `prompt_management.py` | The prompt department: writes, grades (8 criteria), auto-upgrades to the quality bar, and version-histories every prompt |
 | **API Mgmt (v3.2.0)** | `api_management.py` | Per-node token+USD budgets with 80% tripwire, rate limits + burst control, fallback switching, live spend dashboard |
 | **CEO Console (v3.2.0)** | `ceo_access.py` | CEO as operator: PowerShell/shell, file creation, CLI deployment, MCP tool calls — dry-run first, fully audited, powers-gated |
+| **Automation (v3.3.0)** | `automation.py` | Hands + eyes: pixel mouse/keyboard, screenshot + OCR screen reading, real browser driving (playwright or plan mode), scoped file ops — powers-gated and audit-logged |
 | **Secrets** | `secrets.py` | Fernet-encrypted `.env` at rest; keys never appear in the repo, ever |
 
 ---
